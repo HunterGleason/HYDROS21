@@ -101,8 +101,8 @@ String gen_date_str(DateTime now) {
   return datastring;
 }
 
-/*Function reads data on logfile, and uses Iridium modem to send all observations
-   for the previous day over satellite.
+/*Function reads data from a daily logfile, and uses Iridium modem to send all observations
+   for the previous day over satellite at midnight on the RTC. 
 */
 void send_daily_data(DateTime now)
 {
@@ -151,9 +151,6 @@ void send_daily_data(DateTime now)
     delay(20);
     digitalWrite(SET_RELAY, LOW);
 
-    //wait 5-sec while super capacitor charges
-    delay(5000);
-
 
     // Start the serial port connected to the satellite modem
     IridiumSerial.begin(19200);
@@ -163,12 +160,13 @@ void send_daily_data(DateTime now)
     if (err != ISBD_SUCCESS)
     {
 
-      if (err == ISBD_NO_MODEM_DETECTED)
-        return;
+
+            digitalWrite(LED, HIGH);
+            delay(500);
+            digitalWrite(LED, LOW);
+            delay(500);
     }
 
-    //Get the datetime of the days start (i.e., 24 hours previous to current time)
-    DateTime days_start (now - TimeSpan(1, 0, 0, 0));
 
     //Set paramters for parsing the log file
     CSV_Parser cp("ssss", true, ',');
@@ -180,7 +178,7 @@ void send_daily_data(DateTime now)
     char **h2o_ecs;
 
     //Parse the logfile
-    cp.readSDfile(filename[0]);
+    cp.readSDfile("DAILY.CSV");
 
 
     //Populate data arrays from logfile
@@ -203,9 +201,7 @@ void send_daily_data(DateTime now)
       int dt_month = datetime.substring(5, 7).toInt();
       int dt_day = datetime.substring(8).toInt();
 
-      //Check if the observations datetime occured during the day being summarised
-      if (dt_year == days_start.year() && dt_month == days_start.month() && dt_day == days_start.day())
-      {
+
         String h2o_depth = String(h2o_depths[i]);
         String h2o_temp = String(h2o_temps[i]);
         String h2o_ec = String(h2o_ecs[i]);
@@ -213,7 +209,7 @@ void send_daily_data(DateTime now)
         //Add observation to iridium_string
         String datastring = "{" + datetime + "," + h2o_depth + "," + h2o_temp + "," + h2o_ec + "}";
         iridium_string = iridium_string + datastring;
-      }
+      
     }
 
     //varible for keeping a byte count
@@ -227,7 +223,7 @@ void send_daily_data(DateTime now)
     iridium_string.toCharArray(char_array, str_len);
 
     //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
-    uint8_t buffer[330];
+    uint8_t buffer[340];
 
     //For each charachter in the iridium string (i.e., string of the daily observations)
     for (int j = 0; j < str_len; j++)
@@ -237,23 +233,30 @@ void send_daily_data(DateTime now)
       byte_count = byte_count + 1;
 
       //If maximum bytes have been reached
-      if (byte_count == 330)
+      if (byte_count == 340)
       {
         //reset byte count
         byte_count = 0;
 
+        digitalWrite(LED, HIGH);
         //transmit binary buffer data via iridium
         err = modem.sendSBDBinary(buffer, sizeof(buffer));
+        digitalWrite(LED, LOW);
 
         if (err != ISBD_SUCCESS)
         {
-          for (int i = 0; i < 20; i++)
+          for (int i = 0; i < 10; i++)
           {
             digitalWrite(LED, HIGH);
-            delay(50);
+            delay(500);
             digitalWrite(LED, LOW);
-            delay(50);
+            delay(500);
           }
+        }
+
+        if((str_len - j)<340)
+        {
+          uint8_t buffer[str_len-j];
         }
 
       }
@@ -263,6 +266,13 @@ void send_daily_data(DateTime now)
     digitalWrite(UNSET_RELAY, HIGH);
     delay(30);
     digitalWrite(UNSET_RELAY, LOW);
+
+
+    //Remove previous daily values CSV
+    SD.remove("daily.csv");
+
+
+
   }
 }
 
@@ -273,6 +283,7 @@ void setup() {
   pinMode(SET_RELAY, OUTPUT);
   pinMode(UNSET_RELAY, OUTPUT);
   pinMode(LED, OUTPUT);
+  digitalWrite(LED, LOW);
 
 
   //Make sure a SD is available (1-sec flash LED means SD card did not initialize)
@@ -392,30 +403,49 @@ void setup() {
     dataFile.close();
   }
 
-
-
-  //Check that the iridium modem is connected and the the clock has just reached midnight (i.e.,current time is within one logging interval of midnight)
-  if (now.hour() == 0)
+  //Write header if first time writing to the file
+  if (!SD.exists("DAILY.CSV"))
   {
-    //Send daily data over Iridium
-    send_daily_data(now);
+    //Write datastring and close logfile on SD card
+    dataFile = SD.open("DAILY.CSV", FILE_WRITE);
+    if (dataFile)
+    {
+      dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m");
+      dataFile.close();
+    } 
+  }else {
+      //Write datastring and close logfile on SD card
+      dataFile = SD.open("DAILY.CSV", FILE_WRITE);
+      if (dataFile)
+      {
+        dataFile.println(datastring);
+        dataFile.close();
+      }
+    }
 
+
+    //Check that the iridium modem is connected and the the clock has just reached midnight (i.e.,current time is within one logging interval of midnight)
+    if (now.hour() == 0)
+    {
+      //Send daily data over Iridium
+      send_daily_data(now);
+
+    }
   }
-}
 
-void loop() {
+  void loop() {
 
-  //Kill power to Iridium Modem
-  digitalWrite(UNSET_RELAY, HIGH);
-  delay(30);
-  digitalWrite(UNSET_RELAY, LOW);
+    //Kill power to Iridium Modem
+    digitalWrite(UNSET_RELAY, HIGH);
+    delay(30);
+    digitalWrite(UNSET_RELAY, LOW);
 
-  // We're done!
-  // It's important that the donePin is written LOW and THEN HIGH. This shift
-  // from low to HIGH is how the TPL5110 Nano Power Timer knows to turn off the
-  // microcontroller.
-  digitalWrite(DONE_PIN, LOW);
-  delay(10);
-  digitalWrite(DONE_PIN, HIGH);
-  delay(10);
-}
+    // We're done!
+    // It's important that the donePin is written LOW and THEN HIGH. This shift
+    // from low to HIGH is how the TPL5110 Nano Power Timer knows to turn off the
+    // microcontroller.
+    digitalWrite(DONE_PIN, LOW);
+    delay(10);
+    digitalWrite(DONE_PIN, HIGH);
+    delay(10);
+  }
