@@ -96,13 +96,13 @@ String gen_date_str(DateTime now) {
   }
 
   //Assemble a data string for logging to SD, with date-time, snow depth (mm), temperature (deg C) and humidity (%)
-  String datastring = yr_str + "-" + mnth_str + "-" + day_str + " " + hr_str + ":" + min_str + ":" + sec_str + ",";
+  String datestring = yr_str + "-" + mnth_str + "-" + day_str + " " + hr_str + ":" + min_str + ":" + sec_str + ",";
 
-  return datastring;
+  return datestring;
 }
 
 /*Function reads data from a daily logfile, and uses Iridium modem to send all observations
-   for the previous day over satellite at midnight on the RTC. 
+   for the previous day over satellite at midnight on the RTC.
 */
 void send_daily_data(DateTime now)
 {
@@ -148,7 +148,7 @@ void send_daily_data(DateTime now)
 
     //Provide power to Iridium Modem
     digitalWrite(SET_RELAY, HIGH);
-    delay(20);
+    delay(30);
     digitalWrite(SET_RELAY, LOW);
 
 
@@ -159,108 +159,119 @@ void send_daily_data(DateTime now)
     err = modem.begin();
     if (err != ISBD_SUCCESS)
     {
-
-
-            digitalWrite(LED, HIGH);
-            delay(500);
-            digitalWrite(LED, LOW);
-            delay(500);
+      digitalWrite(LED, HIGH);
+      delay(500);
+      digitalWrite(LED, LOW);
+      delay(500);
     }
 
 
     //Set paramters for parsing the log file
-    CSV_Parser cp("ssss", true, ',');
+    CSV_Parser cp("sdfd", true, ',');
 
     //Varibles for holding data fields
     char **datetimes;
-    char **h2o_depths;
-    char **h2o_temps;
-    char **h2o_ecs;
-
-    //Parse the logfile
-    cp.readSDfile("DAILY.CSV");
-
+    int16_t *h2o_depths;
+    float *h2o_temps;
+    int16_t *h2o_ecs;
+    
+    //Read IRID.CSV
+    cp.readSDfile("/DAILY.csv");
+    
 
     //Populate data arrays from logfile
     datetimes = (char**)cp["datetime"];
-    h2o_depths = (char**)cp["h2o_depth_mm"];
-    h2o_temps = (char**)cp["h2o_temp_deg_c"];
-    h2o_ecs = (char**)cp["ec_dS_m"];
+    h2o_depths = (int16_t*)cp["h2o_depth_mm"];
+    h2o_temps = (float*)cp["h2o_temp_deg_c"];
+    h2o_ecs = (int16_t*)cp["ec_dS_m"];
 
-    //String for sending over modem
-    String iridium_string;
+    //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
+    uint8_t dt_buffer[340];
+    int buff_idx = 0;
 
-    //For each observation in the CSV
-    for (int i = 0; i < cp.getRowsCount(); i++) {
+    //Get the start datetime stamp as string
+    String datestamp = String(datetimes[0]).substring(0, 10);
 
-      //Get the datetime stamp as string
-      String datetime = String(datetimes[i]);
+    for (int i = 0; i < datestamp.length(); i++)
+    {
+      dt_buffer[buff_idx] = datestamp.charAt(buff_idx);
+      buff_idx++;
+    }
 
-      //Get the observations year, month, day
-      int dt_year = datetime.substring(0, 4).toInt();
-      int dt_month = datetime.substring(5, 7).toInt();
-      int dt_day = datetime.substring(8).toInt();
+    dt_buffer[buff_idx] = ':';
+    buff_idx++;
 
 
-        String h2o_depth = String(h2o_depths[i]);
-        String h2o_temp = String(h2o_temps[i]);
-        String h2o_ec = String(h2o_ecs[i]);
+    for (int day_hour = 0; day_hour < 24; day_hour++)
+    {
 
-        //Add observation to iridium_string
-        String datastring = "{" + datetime + "," + h2o_depth + "," + h2o_temp + "," + h2o_ec + "}";
-        iridium_string = iridium_string + datastring;
+      float mean_depth = 999.0;
+      float mean_temp = 999.0;
+      float mean_ec = 999.0;
+      boolean is_obs = false;
+      int N = 0;
+
+      //For each observation in the CSV
+      for (int i = 0; i < cp.getRowsCount(); i++) {
+
+        String datetime = String(datetimes[i]);
+        int dt_hour = datetime.substring(11, 13).toInt();
+
+        if (dt_hour == day_hour)
+        {
+
+
+          float h2o_depth = (float) h2o_depths[i];
+          float h2o_temp = h2o_temps[i];
+          float h2o_ec = (float) h2o_ecs[i];
+
+          if (is_obs == false)
+          {
+            mean_depth = h2o_depth;
+            mean_temp = h2o_temp;
+            mean_ec = h2o_ec;
+            is_obs = true;
+            N++;
+          } else {
+            mean_depth = mean_depth + h2o_depth;
+            mean_temp = mean_temp + h2o_temp;
+            mean_ec = mean_ec + h2o_ec;
+            N++;
+          }
+
+        }
+      }
+
+      if (N > 0)
+      {
+        mean_depth = mean_depth / N;
+        mean_temp = (mean_temp / N) * 10.0;
+        mean_ec = mean_ec / N;
+      }
+
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+
+      for (int i = 0; i < datastring.length(); i++)
+      {
+        dt_buffer[buff_idx] = datastring.charAt(i);
+        buff_idx++;
+      }
       
     }
 
-    //varible for keeping a byte count
-    int byte_count = 0;
+    digitalWrite(LED, HIGH);
+    //transmit binary buffer data via iridium
+    err = modem.sendSBDBinary(dt_buffer,buff_idx);
+    digitalWrite(LED, LOW);
 
-    //Length of the iridium string in bytes
-    int str_len = iridium_string.length() + 1;
-
-    //Convert iridium_string to character array
-    char char_array[str_len];
-    iridium_string.toCharArray(char_array, str_len);
-
-    //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
-    uint8_t buffer[340];
-
-    //For each charachter in the iridium string (i.e., string of the daily observations)
-    for (int j = 0; j < str_len; j++)
+    if (err != ISBD_SUCCESS)
     {
-      //add character to the binary buffer, increment the byte count
-      buffer[byte_count] = char_array[j];
-      byte_count = byte_count + 1;
-
-      //If maximum bytes have been reached
-      if (byte_count == 340)
-      {
-        //reset byte count
-        byte_count = 0;
-
         digitalWrite(LED, HIGH);
-        //transmit binary buffer data via iridium
-        err = modem.sendSBDBinary(buffer, sizeof(buffer));
+        delay(500);
         digitalWrite(LED, LOW);
-
-        if (err != ISBD_SUCCESS)
-        {
-          for (int i = 0; i < 10; i++)
-          {
-            digitalWrite(LED, HIGH);
-            delay(500);
-            digitalWrite(LED, LOW);
-            delay(500);
-          }
-        }
-
-        if((str_len - j)<340)
-        {
-          uint8_t buffer[str_len-j];
-        }
-
-      }
+        delay(500);
     }
+
 
     //Kill power to Iridium Modem
     digitalWrite(UNSET_RELAY, HIGH);
@@ -269,13 +280,9 @@ void send_daily_data(DateTime now)
 
 
     //Remove previous daily values CSV
-    SD.remove("daily.csv");
-
-
-
+    SD.remove("DAILY.csv");
   }
 }
-
 void setup() {
 
   //Set pin modes for digital IO
@@ -307,8 +314,8 @@ void setup() {
   //Set paramters for parsing the parameter file
   CSV_Parser cp(/*format*/ "s", /*has_header*/ true, /*delimiter*/ ',');
 
-  //Read the parameter file off SD card (snowlog.csv), 1/4-sec flash means file is not available
-  while (!cp.readSDfile("/HYDROS.csv"))
+  //Read the parameter file off SD card (HYDROS.CSV), 1/4-sec flash means file is not available
+  while (!cp.readSDfile("/HYDROS.CSV"))
   {
     digitalWrite(LED, HIGH);
     delay(250);
@@ -403,6 +410,14 @@ void setup() {
     dataFile.close();
   }
 
+    //Check that the iridium modem is connected and the the clock has just reached midnight (i.e.,current time is within one logging interval of midnight)
+  if (now.hour() == 0)
+  {
+    //Send daily data over Iridium
+    send_daily_data(now);
+
+  }
+
   //Write header if first time writing to the file
   if (!SD.exists("DAILY.CSV"))
   {
@@ -412,40 +427,32 @@ void setup() {
     {
       dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m");
       dataFile.close();
-    } 
-  }else {
-      //Write datastring and close logfile on SD card
-      dataFile = SD.open("DAILY.CSV", FILE_WRITE);
-      if (dataFile)
-      {
-        dataFile.println(datastring);
-        dataFile.close();
-      }
     }
-
-
-    //Check that the iridium modem is connected and the the clock has just reached midnight (i.e.,current time is within one logging interval of midnight)
-    if (now.hour() == 0)
+  } else {
+    //Write datastring and close logfile on SD card
+    dataFile = SD.open("DAILY.CSV", FILE_WRITE);
+    if (dataFile)
     {
-      //Send daily data over Iridium
-      send_daily_data(now);
-
+      dataFile.println(datastring);
+      dataFile.close();
     }
   }
 
-  void loop() {
+}
 
-    //Kill power to Iridium Modem
-    digitalWrite(UNSET_RELAY, HIGH);
-    delay(30);
-    digitalWrite(UNSET_RELAY, LOW);
+void loop() {
 
-    // We're done!
-    // It's important that the donePin is written LOW and THEN HIGH. This shift
-    // from low to HIGH is how the TPL5110 Nano Power Timer knows to turn off the
-    // microcontroller.
-    digitalWrite(DONE_PIN, LOW);
-    delay(10);
-    digitalWrite(DONE_PIN, HIGH);
-    delay(10);
-  }
+  //Kill power to Iridium Modem
+  digitalWrite(UNSET_RELAY, HIGH);
+  delay(30);
+  digitalWrite(UNSET_RELAY, LOW);
+
+  // We're done!
+  // It's important that the donePin is written LOW and THEN HIGH. This shift
+  // from low to HIGH is how the TPL5110 Nano Power Timer knows to turn off the
+  // microcontroller.
+  digitalWrite(DONE_PIN, LOW);
+  delay(10);
+  digitalWrite(DONE_PIN, HIGH);
+  delay(10);
+}
