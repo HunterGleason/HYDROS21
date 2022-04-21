@@ -261,7 +261,7 @@ void send_daily_data(DateTime now)
 
     digitalWrite(LED, HIGH);
     //transmit binary buffer data via iridium
-    err = modem.sendSBDBinary(dt_buffer,buff_idx);
+    err = modem.sendSBDBinary(dt_buffer,buff_idx+10);
     digitalWrite(LED, LOW);
 
     if (err != ISBD_SUCCESS)
