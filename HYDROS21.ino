@@ -6,9 +6,9 @@
 
    @brief Checks SDI-12 address 0 for HYDROS-21 sensor, takes a reading and records to SD card.
    When midnight is reached, uses Iridium 9603 (RockBLOCk, Serial version NOT I2C) modem to
-   send the current days data including water level, temp. and electric conductivity. Circuit is
-   built around TPL5110, therefore the logging interval is manually set on the TPL5110. User must provide
-   a CSV file (1-column) named HYDROS.CSV with the column heading "filename" containing the
+   send the current days hourly data including water level, temp. and electric conductivity. Circuit is
+   built around TPL5110, therefore the sampling interval is manually set on the TPL5110 (must be less than 1-hour). 
+   User must provide a CSV file (1-column) named HYDROS.CSV with the column heading "filename" containing the
    desired file name for the logfile (!!Must be 8 char or less!!).
 
 */
@@ -249,7 +249,8 @@ void send_daily_data(DateTime now)
         mean_ec = mean_ec / N;
       }
 
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
       for (int i = 0; i < datastring.length(); i++)
       {
@@ -261,7 +262,7 @@ void send_daily_data(DateTime now)
 
     digitalWrite(LED, HIGH);
     //transmit binary buffer data via iridium
-    err = modem.sendSBDBinary(dt_buffer,buff_idx+10);
+    err = modem.sendSBDBinary(dt_buffer,buff_idx+8);
     digitalWrite(LED, LOW);
 
     if (err != ISBD_SUCCESS)
