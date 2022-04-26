@@ -1,3 +1,5 @@
+
+
 // Include the libraries we need
 #include <OneWire.h> //Needed for oneWire communication 
 #include "RTClib.h" //Needed for communication with Real Time Clock
@@ -5,8 +7,8 @@
 #include <SD.h>//Needed for working with SD card
 #include "ArduinoLowPower.h"//Needed for putting Feather M0 to sleep between samples
 #include <IridiumSBD.h>//Needed for communication with IRIDIUM modem 
-#include <CSV_Parser.h>/*Needed for parsing CSV data*/
-#include <SDI12.h>/*Needed for SDI-12*/
+#include <CSV_Parser.h>//Needed for parsing CSV data
+#include <SDI12.h>//Needed for SDI-12 communication
 
 
 
@@ -14,7 +16,8 @@
 const byte LED = 13; // Built in LED pin
 const byte chipSelect = 4; // For SD card
 const byte IridPwrPin = 6; // Pwr pin to Iridium modem
-const byte HydPwrPin = 9; //Pwr pin to HYDROS21
+const byte HydSetPin = 5; //Pwr set pin to HYDROS21
+const byte HydUnsetPin = 9; //Pwr unset pin to HYDROS21
 const byte dataPin = 12; // The pin of the SDI-12 data bus
 
 // Define Iridium seriel communication COM1
@@ -24,35 +27,24 @@ const byte dataPin = 12; // The pin of the SDI-12 data bus
 #define SENSOR_ADDRESS 0
 
 /*Create library instances*/
-// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-
-// Setup a PCF8523 Real Time Clock instance
-RTC_PCF8523 rtc;
-
-// Setup a log file instance
-File dataFile;
-
-// Declare the IridiumSBD object
-IridiumSBD modem(IridiumSerial);
-
-/* Define the SDI-12 bus */
-SDI12 mySDI12(dataPin);
-
-
+RTC_PCF8523 rtc; // Setup a PCF8523 Real Time Clock instance
+File dataFile; // Setup a log file instance
+IridiumSBD modem(IridiumSerial); // Declare the IridiumSBD object
+SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 
 /*Define global vars */
+int sample_intv = 10; //Sample interval in minutes
 String datestamp; //For printing to SD card and IRIDIUM payload
 String filename = "hydrdata.csv"; //Name of log file
-int sample_intv = 1; //Sample interval in minutes
-DateTime IridTime;//Varible for keeping IRIDIUM transmit time
+DateTime IridTime;//Dattime varible for keeping IRIDIUM transmit time
 int err; //IRIDIUM status var
-String myCommand   = "";
-String sdiResponse = "";
+String myCommand   = "";//SDI-12 command var
+String sdiResponse = "";//SDI-12 responce var
 
 //Logger sleep time in milliseconds
 uint32_t sleep_time = sample_intv * 60000;
 
-/*Function pings RTC for datetime and returns formated datestamp*/
+/*Function pings RTC for datetime and returns formated datestamp YYYY-MM-DD HH:MM:SS*/
 String gen_date_str(DateTime now) {
 
   //Format current date time values for writing to SD
@@ -104,7 +96,7 @@ String gen_date_str(DateTime now) {
   return datestring;
 }
 
-/*Function reads data from a daily logfile, and uses Iridium modem to send all observations
+/*Function reads data from a DAILY.CSV logfile, and uses Iridium modem to send all observations
    for the previous day over satellite at midnight on the RTC.
 */
 void send_daily_data(DateTime now)
@@ -159,6 +151,7 @@ void send_daily_data(DateTime now)
   //Get the start datetime stamp as string
   String datestamp = String(datetimes[0]).substring(0, 10);
 
+  //Populate buffer with datestamp
   for (int i = 0; i < datestamp.length(); i++)
   {
     dt_buffer[buff_idx] = datestamp.charAt(buff_idx);
@@ -168,38 +161,44 @@ void send_daily_data(DateTime now)
   dt_buffer[buff_idx] = ':';
   buff_idx++;
 
-
+  //For each hour 0-23
   for (int day_hour = 0; day_hour < 24; day_hour++)
   {
 
+    //Declare average vars for each HYDROS21 output 
     float mean_depth = 999.0;
     float mean_temp = 999.0;
     float mean_ec = 999.0;
     boolean is_obs = false;
     int N = 0;
 
-    //For each observation in the CSV
+    //For each observation in the DAILY.CSV
     for (int i = 0; i < cp.getRowsCount(); i++) {
 
+      //Read the datetime and hour
       String datetime = String(datetimes[i]);
       int dt_hour = datetime.substring(11, 13).toInt();
 
+      //If the hour matches day hour
       if (dt_hour == day_hour)
       {
 
-
+        //Get data
         float h2o_depth = (float) h2o_depths[i];
         float h2o_temp = h2o_temps[i];
         float h2o_ec = (float) h2o_ecs[i];
 
+        //Check if this is the first observation for the hour
         if (is_obs == false)
         {
+          //Update average vars
           mean_depth = h2o_depth;
           mean_temp = h2o_temp;
           mean_ec = h2o_ec;
           is_obs = true;
           N++;
         } else {
+          //Update average vars 
           mean_depth = mean_depth + h2o_depth;
           mean_temp = mean_temp + h2o_temp;
           mean_ec = mean_ec + h2o_ec;
@@ -209,16 +208,20 @@ void send_daily_data(DateTime now)
       }
     }
 
+    //Check if there were any observations for the hour 
     if (N > 0)
     {
+      //Compute averages 
       mean_depth = mean_depth / N;
       mean_temp = (mean_temp / N) * 10.0;
       mean_ec = mean_ec / N;
     }
 
+    //Assemble the data string, no EC for now 
     //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
     String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
+    //Populate the buffer with the datastring 
     for (int i = 0; i < datastring.length(); i++)
     {
       dt_buffer[buff_idx] = datastring.charAt(i);
@@ -227,12 +230,13 @@ void send_daily_data(DateTime now)
 
   }
 
+  //Indicate the modem is trying to send 
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
   digitalWrite(LED, LOW);
 
-
+  //Indicate the ISBD_SUCCESS
   if (err != ISBD_SUCCESS)
   {
     digitalWrite(LED, HIGH);
@@ -245,9 +249,8 @@ void send_daily_data(DateTime now)
     delay(5000);
   }
 
+  //Put the IRIDUM modem to sleep
   err = modem.sleep();
-
-
   //Kill power to Iridium Modem
   digitalWrite(IridPwrPin, LOW);
   delay(30);
@@ -269,8 +272,12 @@ void setup(void)
   // Set pin modes
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
-  pinMode(HydPwrPin, OUTPUT);
-  digitalWrite(HydPwrPin, LOW);
+  pinMode(HydSetPin, OUTPUT);
+  digitalWrite(HydSetPin, LOW);
+  pinMode(HydUnsetPin, OUTPUT);
+  digitalWrite(HydUnsetPin, HIGH);
+  delay(30);
+  digitalWrite(HydUnsetPin, LOW);
   pinMode(IridPwrPin, OUTPUT);
   digitalWrite(IridPwrPin, LOW);
 
@@ -306,16 +313,20 @@ void setup(void)
 }
 
 /*
-   Main function, get and show the temperature
+   Main function, sample HYDROS21 and sample interval, log to SD, and transmit hourly averages over IRIDIUM at midnight on the RTC 
 */
 void loop(void)
 {
 
+  //Switch power to HYDR21 via latching relay 
+  digitalWrite(HydSetPin, HIGH);
+  delay(30);
+  digitalWrite(HydSetPin, LOW);
 
-  digitalWrite(HydPwrPin, HIGH);
-  delay(100);
+  //Give HYDROS21 sensor time to power up 
+  delay(1000);
 
-
+  //Get the curent datetime 
   DateTime now = rtc.now();
 
   // first command to take a measurement
@@ -373,8 +384,8 @@ void loop(void)
   if (sdiResponse.length() > 1)
     mySDI12.clearBuffer();
 
+  //Assemble datastring
   String datastring = gen_date_str(now);
-
   datastring = datastring + sdiResponse;
 
   //Write header if first time writing to the file
@@ -423,8 +434,12 @@ void loop(void)
     }
   }
 
-  digitalWrite(HydPwrPin, LOW);
+    //Switch power to HYDR21 via latching relay 
+  digitalWrite(HydUnsetPin, HIGH);
+  delay(30);
+  digitalWrite(HydUnsetPin, LOW);
 
+  //Flash LED to idicate a sample was just taken 
   digitalWrite(LED, HIGH);
   delay(1000);
   digitalWrite(LED, LOW);
