@@ -33,16 +33,16 @@ IridiumSBD modem(IridiumSerial); // Declare the IridiumSBD object
 SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 
 /*Define global vars */
-int sample_intv = 10; //Sample interval in minutes
-String datestamp; //For printing to SD card and IRIDIUM payload
-String filename = "hydrdata.csv"; //Name of log file
+char **filename; //Name of log file
+String filestr; //Filename as string
+int16_t *sample_intvl; //Sample interval in minutes
 DateTime IridTime;//Dattime varible for keeping IRIDIUM transmit time
 int err; //IRIDIUM status var
 String myCommand   = "";//SDI-12 command var
 String sdiResponse = "";//SDI-12 responce var
 
 //Logger sleep time in milliseconds
-uint32_t sleep_time = sample_intv * 60000;
+uint32_t sleep_time;
 
 /*Function pings RTC for datetime and returns formated datestamp YYYY-MM-DD HH:MM:SS*/
 String gen_date_str(DateTime now) {
@@ -290,6 +290,27 @@ void setup(void)
     delay(1000);
   }
 
+      //Set paramters for parsing the log file
+  CSV_Parser cp("sd", true, ',');
+
+
+  //Read IRID.CSV
+  while(!cp.readSDfile("/PARAM.txt"))
+  {
+    digitalWrite(LED, HIGH);
+    delay(1000);
+    digitalWrite(LED, LOW);
+    delay(1000);
+  }
+
+
+  //Populate data arrays from logfile
+  filename = (char**)cp["filename"];
+  sample_intvl = (int16_t*)cp["sample_intvl"];
+
+  sleep_time = sample_intvl[0] * 60000;
+  filestr = String(filename[0]);
+
 
   // Make sure RTC is available
   while (!rtc.begin())
@@ -388,10 +409,11 @@ void loop(void)
   String datastring = gen_date_str(now);
   datastring = datastring + sdiResponse;
 
+
   //Write header if first time writing to the file
-  if (!SD.exists(filename))
+  if (!SD.exists(filestr.c_str()))
   {
-    dataFile = SD.open(filename, FILE_WRITE);
+    dataFile = SD.open(filestr.c_str(), FILE_WRITE);
     if (dataFile)
     {
       dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m");
@@ -400,7 +422,7 @@ void loop(void)
 
   } else {
     //Write datastring and close logfile on SD card
-    dataFile = SD.open(filename, FILE_WRITE);
+    dataFile = SD.open(filestr.c_str(), FILE_WRITE);
     if (dataFile)
     {
       dataFile.println(datastring);
