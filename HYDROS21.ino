@@ -118,9 +118,13 @@ void send_daily_data(DateTime now)
   if (err != ISBD_SUCCESS)
   {
     digitalWrite(LED, HIGH);
-    delay(500);
+    delay(1000);
     digitalWrite(LED, LOW);
-    delay(500);
+    delay(1000);
+    digitalWrite(LED, HIGH);
+    delay(1000);
+    digitalWrite(LED, LOW);
+    delay(1000);
   }
 
 
@@ -463,9 +467,9 @@ void loop(void)
 
   //Flash LED to idicate a sample was just taken 
   digitalWrite(LED, HIGH);
-  delay(1000);
+  delay(250);
   digitalWrite(LED, LOW);
-  delay(1000);
+  delay(250);
 
   //Put logger in low power mode for lenght 'sleep_time'
   LowPower.sleep(sleep_time);
