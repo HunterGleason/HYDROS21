@@ -1,7 +1,6 @@
 
 
 // Include the libraries we need
-#include <OneWire.h> //Needed for oneWire communication 
 #include "RTClib.h" //Needed for communication with Real Time Clock
 #include <SPI.h>//Needed for working with SD card
 #include <SD.h>//Needed for working with SD card
@@ -289,12 +288,12 @@ void setup(void)
   //Make sure a SD is available (1-sec flash LED means SD card did not initialize)
   while (!SD.begin(chipSelect)) {
     digitalWrite(LED, HIGH);
-    delay(1000);
+    delay(2000);
     digitalWrite(LED, LOW);
-    delay(1000);
+    delay(2000);
   }
 
-      //Set paramters for parsing the log file
+  //Set paramters for parsing the log file
   CSV_Parser cp("sd", true, ',');
 
 
