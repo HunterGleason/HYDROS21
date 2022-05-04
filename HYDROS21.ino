@@ -263,7 +263,7 @@ void send_daily_data(DateTime now)
   SD.remove("/DAILY.CSV");
 
   //Update IridTime to next day at midnight
-  IridTime = DateTime(now.year(), now.month(), now.day() + 1, 0, 0, 0);
+  IridTime = (IridTime + TimeSpan(1,0,0,0));
 }
 
 
@@ -330,8 +330,9 @@ void setup(void)
   //Get current datetime
   DateTime now = rtc.now();
 
-  //Set iridium transmit time (IridTime) to end of current day (midnight)
-  IridTime = DateTime(now.year(), now.month(), now.day() + 1, 0, 0, 0);
+  //Set iridium transmit time (IridTime) to end of current day (midnight),i.e., beginning of next day
+  uint8_t nextday = now.day()+1;
+  IridTime = DateTime(now.year(), now.month(),nextday);
 
 
 }
@@ -412,6 +413,11 @@ void loop(void)
   String datastring = gen_date_str(now);
   datastring = datastring + sdiResponse;
 
+  //Switch power to HYDR21 via latching relay 
+  digitalWrite(HydUnsetPin, HIGH);
+  delay(30);
+  digitalWrite(HydUnsetPin, LOW);
+
 
   //Write header if first time writing to the file
   if (!SD.exists(filestr.c_str()))
@@ -458,11 +464,6 @@ void loop(void)
       dataFile.close();
     }
   }
-
-    //Switch power to HYDR21 via latching relay 
-  digitalWrite(HydUnsetPin, HIGH);
-  delay(30);
-  digitalWrite(HydUnsetPin, LOW);
 
   //Flash LED to idicate a sample was just taken 
   digitalWrite(LED, HIGH);
