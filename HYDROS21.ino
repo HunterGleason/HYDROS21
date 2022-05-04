@@ -98,7 +98,7 @@ String gen_date_str(DateTime now) {
 /*Function reads data from a DAILY.CSV logfile, and uses Iridium modem to send all observations
    for the previous day over satellite at midnight on the RTC.
 */
-void send_daily_data(DateTime now)
+void send_daily_data()
 {
 
   //For capturing Iridium errors
@@ -442,7 +442,7 @@ void loop(void)
   //If new day, send daily temp. stats over IRIDIUM modem
   if (now >= IridTime)
   {
-    send_daily_data(now);
+    send_daily_data();
   }
 
   //Write header if first time writing to the file
