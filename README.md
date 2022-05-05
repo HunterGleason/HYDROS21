@@ -34,7 +34,6 @@ The following list is the hardware required for creating the circuit shown in th
 | 2N222 | NPN Transistor for switching power to RockBLOCK | [2N2222](https://www.adafruit.com/product/756)[^2] | 1 | 
 | Connecting Wire | Wire for making connections, or PCB | NA | NA |
 | Screw Terminals | 2.54 mm Pitch Terminal Block - 2-Pin | [Terminal Block](https://www.adafruit.com/product/2138)[^1] | ~5 |
-| -------- | -------- | -------- | -------- |
 
 [^1]: Optional 
 [^2]: Or Functional Equivalent
