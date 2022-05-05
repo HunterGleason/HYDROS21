@@ -13,6 +13,12 @@ There are several libraries required for running this code in addition to having
 - <CSV_Parser.h>//Needed for parsing CSV data
 - <SDI12.h>//Needed for SDI-12 communication
 
+# EQUIPMENT LIST
+
+| Item | Description | Link |
+| -------- | -------- | -------- |
+| Feather Adalogger M0 | MCU for data acquisition | [Adalogger](https://www.adafruit.com/product/2796) | 
+
 # LOGGER OPERATION
 This section outlines the steps for operating the logger.
 
