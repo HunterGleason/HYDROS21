@@ -14,10 +14,31 @@ There are several libraries required for running this code in addition to having
 - <SDI12.h>//Needed for SDI-12 communication
 
 # EQUIPMENT LIST
+The following list is the hardware required for creating the circuit shown in the diagram and does not include items for field deployment such as logger box, grommets, standoffs, conduit etc.
 
-| Item | Description | Link |
-| -------- | -------- | -------- |
-| Feather Adalogger M0 | MCU for data acquisition | [Adalogger](https://www.adafruit.com/product/2796) | 
+
+| Item | Description | Link | Qnt. |
+| -------- | -------- | -------- | -------- |
+| Feather Adalogger M0 | MCU for data acquisition | [Adalogger](https://www.adafruit.com/product/2796)[^2] | 1 |
+| FeatherWing Terminal Breakout | For interfacing with the Adalogger | [Terminal Breakout](https://www.adafruit.com/product/2926)[^2] | 1 |
+| PCF8523 | Real Time Clock | [PCF8523](https://www.adafruit.com/product/3295) | 1 |
+| HYDROS21 | 3-in-1 Hydrometric sensor | [HYDROS21](https://www.metergroup.com/en/meter-environment/products/hydros-21-water-level-sensor-conductivity-temperature-depth) | 1 |
+| Latching Relay | For switching power to HYDROS21 | [Relay](https://www.adafruit.com/product/2923)[^2] | 1 |
+| DS18B20 | Waterproof 1-Wire temp. sensor | [DS18B20](https://www.adafruit.com/product/381) | 1 |
+| Cabel | Cabel for extending solar panel and / or  DS18B20 if needed | NA[^1] | NA |
+| bq24074 | Solar LiPo charger | [bq24074](https://www.adafruit.com/product/4755) | 1 | 
+| Solar Panel | 6V 3.5 Watt | [Solar Panel](https://www.adafruit.com/product/500) | 1 |
+| LiPo Battery | 3.7V 6600 mAh | [Lipo Battery](https://www.adafruit.com/product/353)[^2] | 1 |
+| RockBLOCK 9603 | IRIDIUM Modem | [RockBLOCK](https://www.iridium.com/products/rock-seven-rockblock-9603/)[^2] | 1 |
+| Patch Antenna | For improved signal | [Antenna](https://www.sparkfun.com/products/14580)[^1] | 1 |
+| 2N222 | NPN Transistor for switching power to RockBLOCK | [2N2222](https://www.adafruit.com/product/756)[^2] | 1 | 
+| Connecting Wire | Wire for making connections, or PCB | NA | NA |
+| Screw Terminals | 2.54 mm Pitch Terminal Block - 2-Pin | [Terminal Block](https://www.adafruit.com/product/2138)[^1] | ~5 |
+| -------- | -------- | -------- | -------- |
+
+[^1]: Optional 
+[^2]: Or Functional Equivalent
+
 
 # LOGGER OPERATION
 This section outlines the steps for operating the logger.
