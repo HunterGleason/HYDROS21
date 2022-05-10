@@ -168,7 +168,7 @@ void send_daily_data()
   for (int day_hour = 0; day_hour < 24; day_hour++)
   {
 
-    //Declare average vars for each HYDROS21 output 
+    //Declare average vars for each HYDROS21 output
     float mean_depth = 999.0;
     float mean_temp = 999.0;
     float mean_ec = 999.0;
@@ -201,7 +201,7 @@ void send_daily_data()
           is_obs = true;
           N++;
         } else {
-          //Update average vars 
+          //Update average vars
           mean_depth = mean_depth + h2o_depth;
           mean_temp = mean_temp + h2o_temp;
           mean_ec = mean_ec + h2o_ec;
@@ -211,20 +211,20 @@ void send_daily_data()
       }
     }
 
-    //Check if there were any observations for the hour 
+    //Check if there were any observations for the hour
     if (N > 0)
     {
-      //Compute averages 
+      //Compute averages
       mean_depth = mean_depth / N;
       mean_temp = (mean_temp / N) * 10.0;
       mean_ec = mean_ec / N;
     }
 
-    //Assemble the data string, no EC for now 
+    //Assemble the data string, no EC for now
     //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
     String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
-    //Populate the buffer with the datastring 
+    //Populate the buffer with the datastring
     for (int i = 0; i < datastring.length(); i++)
     {
       dt_buffer[buff_idx] = datastring.charAt(i);
@@ -233,7 +233,7 @@ void send_daily_data()
 
   }
 
-  //Indicate the modem is trying to send 
+  //Indicate the modem is trying to send
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
@@ -262,8 +262,6 @@ void send_daily_data()
   //Remove previous daily values CSV
   SD.remove("/DAILY.CSV");
 
-  //Update IridTime to next day at midnight
-  IridTime = (IridTime + TimeSpan(1,0,0,0));
 }
 
 
@@ -298,7 +296,7 @@ void setup(void)
 
 
   //Read IRID.CSV
-  while(!cp.readSDfile("/PARAM.txt"))
+  while (!cp.readSDfile("/PARAM.txt"))
   {
     digitalWrite(LED, HIGH);
     delay(1000);
@@ -331,27 +329,27 @@ void setup(void)
   DateTime now = rtc.now();
 
   //Set iridium transmit time (IridTime) to end of current day (midnight),i.e., beginning of next day
-  uint8_t nextday = now.day()+1;
-  IridTime = DateTime(now.year(), now.month(),nextday);
+  uint8_t nextday = now.day() + 1;
+  IridTime = DateTime(now.year(), now.month(), nextday);
 
 
 }
 
 /*
-   Main function, sample HYDROS21 and sample interval, log to SD, and transmit hourly averages over IRIDIUM at midnight on the RTC 
+   Main function, sample HYDROS21 and sample interval, log to SD, and transmit hourly averages over IRIDIUM at midnight on the RTC
 */
 void loop(void)
 {
 
-  //Switch power to HYDR21 via latching relay 
+  //Switch power to HYDR21 via latching relay
   digitalWrite(HydSetPin, HIGH);
   delay(30);
   digitalWrite(HydSetPin, LOW);
 
-  //Give HYDROS21 sensor time to power up 
+  //Give HYDROS21 sensor time to power up
   delay(1000);
 
-  //Get the curent datetime 
+  //Get the curent datetime
   DateTime now = rtc.now();
 
   // first command to take a measurement
@@ -413,7 +411,7 @@ void loop(void)
   String datastring = gen_date_str(now);
   datastring = datastring + sdiResponse;
 
-  //Switch power to HYDR21 via latching relay 
+  //Switch power to HYDR21 via latching relay
   digitalWrite(HydUnsetPin, HIGH);
   delay(30);
   digitalWrite(HydUnsetPin, LOW);
@@ -442,6 +440,8 @@ void loop(void)
   //If new day, send daily temp. stats over IRIDIUM modem
   if (now >= IridTime)
   {
+    //Update IridTime to next day at midnight
+    IridTime = (IridTime + TimeSpan(1, 0, 0, 0));
     send_daily_data();
   }
 
@@ -465,7 +465,7 @@ void loop(void)
     }
   }
 
-  //Flash LED to idicate a sample was just taken 
+  //Flash LED to idicate a sample was just taken
   digitalWrite(LED, HIGH);
   delay(250);
   digitalWrite(LED, LOW);
