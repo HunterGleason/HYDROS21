@@ -254,6 +254,7 @@ void send_daily_data()
 
   //Put the IRIDUM modem to sleep
   err = modem.sleep();
+  
   //Kill power to Iridium Modem
   digitalWrite(IridPwrPin, LOW);
   delay(30);
@@ -330,7 +331,7 @@ void setup(void)
 
   //Set iridium transmit time (IridTime) to end of current day (midnight),i.e., beginning of next day
   uint8_t nextday = now.day() + 1;
-  IridTime = DateTime(now.year(), now.month(), nextday);
+  IridTime = DateTime(now.year(), now.month(), nextday,0,0,1);
 
 
 }
