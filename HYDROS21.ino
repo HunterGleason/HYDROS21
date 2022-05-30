@@ -35,7 +35,7 @@ SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 char **filename; //Name of log file
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
-DateTime IridTime;//Dattime varible for keeping IRIDIUM transmit time
+long IridTime;//Dattime varible for keeping IRIDIUM transmit time
 int err; //IRIDIUM status var
 String myCommand   = "";//SDI-12 command var
 String sdiResponse = "";//SDI-12 responce var
@@ -331,7 +331,7 @@ void setup(void)
 
   //Set iridium transmit time (IridTime) to end of current day (midnight),i.e., beginning of next day
   uint8_t nextday = now.day() + 1;
-  IridTime = DateTime(now.year(), now.month(), nextday,0,0,1);
+  IridTime = DateTime(now.year(), now.month(), nextday,0,0,1).unixtime();
 
 
 }
@@ -351,7 +351,7 @@ void loop(void)
   delay(1000);
 
   //Get the curent datetime
-  DateTime now = rtc.now();
+  DateTime current_time = rtc.now();
 
   // first command to take a measurement
   myCommand = String(SENSOR_ADDRESS) + "M!";
@@ -409,7 +409,7 @@ void loop(void)
     mySDI12.clearBuffer();
 
   //Assemble datastring
-  String datastring = gen_date_str(now);
+  String datastring = gen_date_str(current_time);
   datastring = datastring + sdiResponse;
 
   //Switch power to HYDR21 via latching relay
@@ -439,10 +439,10 @@ void loop(void)
 
   }
   //If new day, send daily temp. stats over IRIDIUM modem
-  if (now >= IridTime)
+  if (current_time.unixtime() >= IridTime)
   {
     //Update IridTime to next day at midnight
-    IridTime = (IridTime + TimeSpan(1, 0, 0, 0));
+    IridTime = (IridTime + 86400L);
     send_daily_data();
   }
 
