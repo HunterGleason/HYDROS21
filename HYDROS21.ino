@@ -39,6 +39,7 @@ long IridTime;//Dattime varible for keeping IRIDIUM transmit time
 int err; //IRIDIUM status var
 String myCommand   = "";//SDI-12 command var
 String sdiResponse = "";//SDI-12 responce var
+DateTime current_time;//Var for keeping the current time
 
 //Logger sleep time in milliseconds
 uint32_t sleep_time;
@@ -101,167 +102,206 @@ String gen_date_str(DateTime now) {
 void send_daily_data()
 {
 
-  //For capturing Iridium errors
-  int err;
-
-  //Provide power to Iridium Modem
-  digitalWrite(IridPwrPin, HIGH);
-  delay(30);
-
-
-  // Start the serial port connected to the satellite modem
-  IridiumSerial.begin(19200);
-
-  // Begin satellite modem operation
-  err = modem.begin();
-  if (err != ISBD_SUCCESS)
+  //Use IRID.CSV to keep track of day
+  if (!SD.exists("IRID.CSV"))
   {
-    digitalWrite(LED, HIGH);
-    delay(1000);
-    digitalWrite(LED, LOW);
-    delay(1000);
-    digitalWrite(LED, HIGH);
-    delay(1000);
-    digitalWrite(LED, LOW);
-    delay(1000);
+    DateTime next_day = (DateTime(current_time.year(), current_time.month(), current_time.day()) + TimeSpan(1, 0, 0, 0));
+    dataFile = SD.open("IRID.CSV", FILE_WRITE);
+    dataFile.println("day,day1");
+    dataFile.println(String(next_day.day()) + "," + String(next_day.day()));
+    dataFile.close();
+
   }
 
-
-
-  //Set paramters for parsing the log file
-  CSV_Parser cp("sdfd", true, ',');
-
-  //Varibles for holding data fields
-  char **datetimes;
-  int16_t *h2o_depths;
-  float *h2o_temps;
-  int16_t *h2o_ecs;
+  //Set up parse params for IRID.CSV
+  CSV_Parser cp(/*format*/ "s-", /*has_header*/ true, /*delimiter*/ ',');
 
   //Read IRID.CSV
-  cp.readSDfile("/DAILY.csv");
-
-
-  //Populate data arrays from logfile
-  datetimes = (char**)cp["datetime"];
-  h2o_depths = (int16_t*)cp["h2o_depth_mm"];
-  h2o_temps = (float*)cp["h2o_temp_deg_c"];
-  h2o_ecs = (int16_t*)cp["ec_dS_m"];
-
-  //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
-  uint8_t dt_buffer[340];
-  int buff_idx = 0;
-
-  //Get the start datetime stamp as string
-  String datestamp = String(datetimes[0]).substring(0, 10);
-
-  //Populate buffer with datestamp
-  for (int i = 0; i < datestamp.length(); i++)
+  while (!cp.readSDfile("/IRID.CSV"))
   {
-    dt_buffer[buff_idx] = datestamp.charAt(buff_idx);
-    buff_idx++;
+    digitalWrite(LED, HIGH);
+    delay(1000);
+    digitalWrite(LED, LOW);
+    delay(1000);
   }
 
-  dt_buffer[buff_idx] = ':';
-  buff_idx++;
+  //Get day from IRID CSV
+  char **irid_day = (char**)cp["day"];
 
-  //For each hour 0-23
-  for (int day_hour = 0; day_hour < 24; day_hour++)
+  //If IRID day matches RTC day
+  if (String(irid_day[0]).toInt() == current_time.day())
   {
+    //Update IRID.CSV with new day
+    SD.remove("IRID.CSV");
+    dataFile = SD.open("IRID.CSV", FILE_WRITE);
+    dataFile.println("day,day1");
+    DateTime next_day = (DateTime(current_time.year(), current_time.month(), current_time.day()) + TimeSpan(1, 0, 0, 0));
+    dataFile.println(String(next_day.day()) + "," + String(next_day.day()));
+    dataFile.close();
 
-    //Declare average vars for each HYDROS21 output
-    float mean_depth = 999.0;
-    float mean_temp = 999.0;
-    float mean_ec = 999.0;
-    boolean is_obs = false;
-    int N = 0;
 
-    //For each observation in the DAILY.CSV
-    for (int i = 0; i < cp.getRowsCount(); i++) {
+    //For capturing Iridium errors
+    int err;
 
-      //Read the datetime and hour
-      String datetime = String(datetimes[i]);
-      int dt_hour = datetime.substring(11, 13).toInt();
+    //Provide power to Iridium Modem
+    digitalWrite(IridPwrPin, HIGH);
+    delay(30);
 
-      //If the hour matches day hour
-      if (dt_hour == day_hour)
-      {
 
-        //Get data
-        float h2o_depth = (float) h2o_depths[i];
-        float h2o_temp = h2o_temps[i];
-        float h2o_ec = (float) h2o_ecs[i];
+    // Start the serial port connected to the satellite modem
+    IridiumSerial.begin(19200);
 
-        //Check if this is the first observation for the hour
-        if (is_obs == false)
-        {
-          //Update average vars
-          mean_depth = h2o_depth;
-          mean_temp = h2o_temp;
-          mean_ec = h2o_ec;
-          is_obs = true;
-          N++;
-        } else {
-          //Update average vars
-          mean_depth = mean_depth + h2o_depth;
-          mean_temp = mean_temp + h2o_temp;
-          mean_ec = mean_ec + h2o_ec;
-          N++;
-        }
-
-      }
+    // Begin satellite modem operation
+    err = modem.begin();
+    if (err != ISBD_SUCCESS)
+    {
+      digitalWrite(LED, HIGH);
+      delay(1000);
+      digitalWrite(LED, LOW);
+      delay(1000);
+      digitalWrite(LED, HIGH);
+      delay(1000);
+      digitalWrite(LED, LOW);
+      delay(1000);
     }
 
-    //Check if there were any observations for the hour
-    if (N > 0)
-    {
-      //Compute averages
-      mean_depth = mean_depth / N;
-      mean_temp = (mean_temp / N) * 10.0;
-      mean_ec = mean_ec / N;
-    }
 
-    //Assemble the data string, no EC for now
-    //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
-    String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
-    //Populate the buffer with the datastring
-    for (int i = 0; i < datastring.length(); i++)
+    //Set paramters for parsing the log file
+    CSV_Parser cp("sdfd", true, ',');
+
+    //Varibles for holding data fields
+    char **datetimes;
+    int16_t *h2o_depths;
+    float *h2o_temps;
+    int16_t *h2o_ecs;
+
+    //Read IRID.CSV
+    cp.readSDfile("/DAILY.csv");
+
+
+    //Populate data arrays from logfile
+    datetimes = (char**)cp["datetime"];
+    h2o_depths = (int16_t*)cp["h2o_depth_mm"];
+    h2o_temps = (float*)cp["h2o_temp_deg_c"];
+    h2o_ecs = (int16_t*)cp["ec_dS_m"];
+
+    //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
+    uint8_t dt_buffer[340];
+    int buff_idx = 0;
+
+    //Get the start datetime stamp as string
+    String datestamp = String(datetimes[0]).substring(0, 10);
+
+    //Populate buffer with datestamp
+    for (int i = 0; i < datestamp.length(); i++)
     {
-      dt_buffer[buff_idx] = datastring.charAt(i);
+      dt_buffer[buff_idx] = datestamp.charAt(buff_idx);
       buff_idx++;
     }
 
-  }
+    dt_buffer[buff_idx] = ':';
+    buff_idx++;
 
-  //Indicate the modem is trying to send
-  digitalWrite(LED, HIGH);
-  //transmit binary buffer data via iridium
-  err = modem.sendSBDBinary(dt_buffer, buff_idx);
-  digitalWrite(LED, LOW);
+    //For each hour 0-23
+    for (int day_hour = 0; day_hour < 24; day_hour++)
+    {
 
-  //Indicate the ISBD_SUCCESS
-  if (err != ISBD_SUCCESS)
-  {
+      //Declare average vars for each HYDROS21 output
+      float mean_depth = 999.0;
+      float mean_temp = 999.0;
+      float mean_ec = 999.0;
+      boolean is_obs = false;
+      int N = 0;
+
+      //For each observation in the DAILY.CSV
+      for (int i = 0; i < cp.getRowsCount(); i++) {
+
+        //Read the datetime and hour
+        String datetime = String(datetimes[i]);
+        int dt_hour = datetime.substring(11, 13).toInt();
+
+        //If the hour matches day hour
+        if (dt_hour == day_hour)
+        {
+
+          //Get data
+          float h2o_depth = (float) h2o_depths[i];
+          float h2o_temp = h2o_temps[i];
+          float h2o_ec = (float) h2o_ecs[i];
+
+          //Check if this is the first observation for the hour
+          if (is_obs == false)
+          {
+            //Update average vars
+            mean_depth = h2o_depth;
+            mean_temp = h2o_temp;
+            mean_ec = h2o_ec;
+            is_obs = true;
+            N++;
+          } else {
+            //Update average vars
+            mean_depth = mean_depth + h2o_depth;
+            mean_temp = mean_temp + h2o_temp;
+            mean_ec = mean_ec + h2o_ec;
+            N++;
+          }
+
+        }
+      }
+
+      //Check if there were any observations for the hour
+      if (N > 0)
+      {
+        //Compute averages
+        mean_depth = mean_depth / N;
+        mean_temp = (mean_temp / N) * 10.0;
+        mean_ec = mean_ec / N;
+      }
+
+      //Assemble the data string, no EC for now
+      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
+
+      //Populate the buffer with the datastring
+      for (int i = 0; i < datastring.length(); i++)
+      {
+        dt_buffer[buff_idx] = datastring.charAt(i);
+        buff_idx++;
+      }
+
+    }
+
+    //Indicate the modem is trying to send
     digitalWrite(LED, HIGH);
-    delay(5000);
+    //transmit binary buffer data via iridium
+    err = modem.sendSBDBinary(dt_buffer, buff_idx);
     digitalWrite(LED, LOW);
-    delay(5000);
-    digitalWrite(LED, HIGH);
-    delay(5000);
-    digitalWrite(LED, LOW);
-    delay(5000);
+
+    //Indicate the ISBD_SUCCESS
+    if (err != ISBD_SUCCESS)
+    {
+      digitalWrite(LED, HIGH);
+      delay(5000);
+      digitalWrite(LED, LOW);
+      delay(5000);
+      digitalWrite(LED, HIGH);
+      delay(5000);
+      digitalWrite(LED, LOW);
+      delay(5000);
+    }
+
+    //Put the IRIDUM modem to sleep
+    err = modem.sleep();
+
+    //Kill power to Iridium Modem
+    digitalWrite(IridPwrPin, LOW);
+    delay(30);
+
+
+    //Remove previous daily values CSV
+    SD.remove("/DAILY.CSV");
   }
-
-  //Put the IRIDUM modem to sleep
-  err = modem.sleep();
-  
-  //Kill power to Iridium Modem
-  digitalWrite(IridPwrPin, LOW);
-  delay(30);
-
-
-  //Remove previous daily values CSV
-  SD.remove("/DAILY.CSV");
 
 }
 
@@ -326,13 +366,6 @@ void setup(void)
   //Begin HYDROS21
   mySDI12.begin();
 
-  //Get current datetime
-  DateTime now = rtc.now();
-
-  //Set iridium transmit time (IridTime) to end of current day (midnight),i.e., beginning of next day
-  uint8_t nextday = now.day() + 1;
-  IridTime = DateTime(now.year(), now.month(), nextday,0,0,1).unixtime();
-
 
 }
 
@@ -351,7 +384,7 @@ void loop(void)
   delay(1000);
 
   //Get the curent datetime
-  DateTime current_time = rtc.now();
+  current_time = rtc.now();
 
   // first command to take a measurement
   myCommand = String(SENSOR_ADDRESS) + "M!";
@@ -439,12 +472,8 @@ void loop(void)
 
   }
   //If new day, send daily temp. stats over IRIDIUM modem
-  if (current_time.unixtime() >= IridTime)
-  {
-    //Update IridTime to next day at midnight
-    IridTime = (IridTime + 86400L);
-    send_daily_data();
-  }
+  send_daily_data();
+
 
   //Write header if first time writing to the file
   if (!SD.exists("DAILY.CSV"))
@@ -474,7 +503,6 @@ void loop(void)
 
   //Put logger in low power mode for lenght 'sleep_time'
   LowPower.sleep(sleep_time);
-
 
 
 }
