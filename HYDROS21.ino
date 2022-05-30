@@ -174,7 +174,7 @@ int send_hourly_data()
       mean_ec = (mean_ec / (float) N);
 
       String datastring = String(round(mean_depth)) + "," + String(round(mean_temp)) + ","+ String(round(mean_ec)) + ':'; //Assemble the data string
-
+      
       /*Populate the buffer with the datastring*/
       for (int i = 0; i < datastring.length(); i++)
       {
