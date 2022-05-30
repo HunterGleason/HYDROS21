@@ -206,7 +206,7 @@ int send_hourly_data()
 
 
       //Assemble the data string
-      String datastring = String(round(mean_depth)) + "," + String(round(mean_temp)) + ","+ String(round(mean_ec)) + ':';
+      String datastring = String(round(mean_depth)) + "," + String(round(mean_temp)) + "," + String(round(mean_ec)) + ':';
 
 
       //Populate the buffer with the datastring
@@ -219,6 +219,12 @@ int send_hourly_data()
     }
 
     start_dt = intvl_dt;
+
+    digitalWrite(LED, HIGH);
+    //transmit binary buffer data via iridium
+    err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    digitalWrite(LED, LOW);
+
 
   }
 
