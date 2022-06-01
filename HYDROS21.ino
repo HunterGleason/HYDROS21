@@ -131,21 +131,13 @@ void send_daily_data()
   //If IRID day matches RTC day
   if (String(irid_day[0]).toInt() == current_time.day())
   {
-    //Update IRID.CSV with new day
-    SD.remove("IRID.CSV");
-    dataFile = SD.open("IRID.CSV", FILE_WRITE);
-    dataFile.println("day,day1");
-    DateTime next_day = (DateTime(current_time.year(), current_time.month(), current_time.day()) + TimeSpan(1, 0, 0, 0));
-    dataFile.println(String(next_day.day()) + "," + String(next_day.day()));
-    dataFile.close();
-
 
     //For capturing Iridium errors
     int err;
 
     //Provide power to Iridium Modem
     digitalWrite(IridPwrPin, HIGH);
-    delay(30);
+    delay(200);
 
 
     // Start the serial port connected to the satellite modem
@@ -301,6 +293,15 @@ void send_daily_data()
 
     //Remove previous daily values CSV
     SD.remove("/DAILY.CSV");
+
+    //Update IRID.CSV with new day
+    SD.remove("IRID.CSV");
+    dataFile = SD.open("IRID.CSV", FILE_WRITE);
+    dataFile.println("day,day1");
+    DateTime next_day = (DateTime(current_time.year(), current_time.month(), current_time.day()) + TimeSpan(1, 0, 0, 0));
+    dataFile.println(String(next_day.day()) + "," + String(next_day.day()));
+    dataFile.close();
+    
   }
 
 }
