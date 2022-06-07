@@ -268,6 +268,84 @@ int send_daily_data()
 
 }
 
+String sample_hydros21()
+{
+    //Switch power to HYDR21 via latching relay
+  digitalWrite(HydSetPin, HIGH);
+  delay(30);
+  digitalWrite(HydSetPin, LOW);
+
+  //Give HYDROS21 sensor time to power up
+  delay(1000);
+
+  // first command to take a measurement
+  myCommand = String(SENSOR_ADDRESS) + "M!";
+
+  mySDI12.sendCommand(myCommand);
+  delay(30);  // wait a while for a response
+
+
+  while (mySDI12.available()) {  // build response string
+    char c = mySDI12.read();
+    if ((c != '\n') && (c != '\r')) {
+      sdiResponse += c;
+      delay(10);  // 1 character ~ 7.5ms
+    }
+  }
+
+  //Clear buffer
+  if (sdiResponse.length() > 1)
+    mySDI12.clearBuffer();
+
+  delay(1000);       // delay between taking reading and requesting data
+  sdiResponse = "";  // clear the response string
+
+
+  // next command to request data from last measurement
+  myCommand = String(SENSOR_ADDRESS) + "D0!";
+
+  mySDI12.sendCommand(myCommand);
+  delay(30);  // wait a while for a response
+
+  while (mySDI12.available()) {  // build string from response
+    char c = mySDI12.read();
+    if ((c != '\n') && (c != '\r')) {
+      sdiResponse += c;
+      delay(10);  // 1 character ~ 7.5ms
+    }
+  }
+
+  //subset responce
+  sdiResponse = sdiResponse.substring(3);
+
+  for (int i = 0; i < sdiResponse.length(); i++)
+  {
+
+    char c = sdiResponse.charAt(i);
+
+    if (c == '+')
+    {
+      sdiResponse.setCharAt(i, ',');
+    }
+
+  }
+
+  //clear buffer
+  if (sdiResponse.length() > 1)
+    mySDI12.clearBuffer();
+
+  //Assemble datastring
+  String hydrostring = gen_date_str(current_time);
+  hydrostring = hydrostring + sdiResponse;
+
+  //Switch power to HYDR21 via latching relay
+  digitalWrite(HydUnsetPin, HIGH);
+  delay(30);
+  digitalWrite(HydUnsetPin, LOW);
+
+  return hydrostring;
+}
+
 
 /*
    The setup function. We only start the sensors, RTC and SD here
@@ -349,79 +427,8 @@ void loop(void)
     int send_status = send_daily_data();
   }
   
-  //Switch power to HYDR21 via latching relay
-  digitalWrite(HydSetPin, HIGH);
-  delay(30);
-  digitalWrite(HydSetPin, LOW);
-
-  //Give HYDROS21 sensor time to power up
-  delay(1000);
-
-  // first command to take a measurement
-  myCommand = String(SENSOR_ADDRESS) + "M!";
-
-  mySDI12.sendCommand(myCommand);
-  delay(30);  // wait a while for a response
-
-
-  while (mySDI12.available()) {  // build response string
-    char c = mySDI12.read();
-    if ((c != '\n') && (c != '\r')) {
-      sdiResponse += c;
-      delay(10);  // 1 character ~ 7.5ms
-    }
-  }
-
-  //Clear buffer
-  if (sdiResponse.length() > 1)
-    mySDI12.clearBuffer();
-
-  delay(1000);       // delay between taking reading and requesting data
-  sdiResponse = "";  // clear the response string
-
-
-  // next command to request data from last measurement
-  myCommand = String(SENSOR_ADDRESS) + "D0!";
-
-  mySDI12.sendCommand(myCommand);
-  delay(30);  // wait a while for a response
-
-  while (mySDI12.available()) {  // build string from response
-    char c = mySDI12.read();
-    if ((c != '\n') && (c != '\r')) {
-      sdiResponse += c;
-      delay(10);  // 1 character ~ 7.5ms
-    }
-  }
-
-  //subset responce
-  sdiResponse = sdiResponse.substring(3);
-
-  for (int i = 0; i < sdiResponse.length(); i++)
-  {
-
-    char c = sdiResponse.charAt(i);
-
-    if (c == '+')
-    {
-      sdiResponse.setCharAt(i, ',');
-    }
-
-  }
-
-  //clear buffer
-  if (sdiResponse.length() > 1)
-    mySDI12.clearBuffer();
-
-  //Assemble datastring
-  String datastring = gen_date_str(current_time);
-  datastring = datastring + sdiResponse;
-
-  //Switch power to HYDR21 via latching relay
-  digitalWrite(HydUnsetPin, HIGH);
-  delay(30);
-  digitalWrite(HydUnsetPin, LOW);
-
+  //Sample HYDROS21
+  String datastring = sample_hydros21();
 
   //Write header if first time writing to the file
   if (!SD.exists(filestr.c_str()))
