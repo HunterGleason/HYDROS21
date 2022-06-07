@@ -35,7 +35,7 @@ SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 char **filename; //Name of log file
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
-int min_lim; //sample interval as int
+int sample_intvl_min; //sample interval as int
 long IridTime;//Dattime varible for keeping IRIDIUM transmit time
 int err; //IRIDIUM status var
 String myCommand   = "";//SDI-12 command var
@@ -100,7 +100,7 @@ String gen_date_str(DateTime now) {
 /*Function reads data from a DAILY.CSV logfile, and uses Iridium modem to send all observations
    for the previous day over satellite at midnight on the RTC.
 */
-void send_daily_data()
+int send_daily_data()
 {
 
   //For capturing Iridium errors
@@ -254,8 +254,6 @@ void send_daily_data()
     delay(5000);
   }
 
-  //Put the IRIDUM modem to sleep
-  err = modem.sleep();
 
   //Kill power to Iridium Modem
   digitalWrite(IridPwrPin, LOW);
@@ -265,7 +263,7 @@ void send_daily_data()
   //Remove previous daily values CSV
   SD.remove("/DAILY.CSV");
 
-
+  return err;
 
 
 }
@@ -315,7 +313,7 @@ void setup(void)
   filename = (char**)cp["filename"];
   sample_intvl = (int16_t*)cp["sample_intvl"];
 
-  min_lim = String(sample_intvl[0]).toInt();
+  sample_intvl_min = String(sample_intvl[0]).toInt();
 
   sleep_time = sample_intvl[0] * 60000;
   filestr = String(filename[0]);
@@ -342,6 +340,15 @@ void setup(void)
 void loop(void)
 {
 
+  //Get the curent datetime
+  current_time = rtc.now();
+
+  //If the hour is 0, and minute is less than sample_intvl_min (i.e., just past midnight), send an Iridium message with daily values
+  if ((current_time.hour() == 0) && (current_time.minute() <= sample_intvl_min+(sample_intvl_min/2)))
+  {
+    int send_status = send_daily_data();
+  }
+  
   //Switch power to HYDR21 via latching relay
   digitalWrite(HydSetPin, HIGH);
   delay(30);
@@ -349,9 +356,6 @@ void loop(void)
 
   //Give HYDROS21 sensor time to power up
   delay(1000);
-
-  //Get the curent datetime
-  current_time = rtc.now();
 
   // first command to take a measurement
   myCommand = String(SENSOR_ADDRESS) + "M!";
@@ -368,7 +372,7 @@ void loop(void)
     }
   }
 
-
+  //Clear buffer
   if (sdiResponse.length() > 1)
     mySDI12.clearBuffer();
 
@@ -390,6 +394,7 @@ void loop(void)
     }
   }
 
+  //subset responce
   sdiResponse = sdiResponse.substring(3);
 
   for (int i = 0; i < sdiResponse.length(); i++)
@@ -404,7 +409,7 @@ void loop(void)
 
   }
 
-
+  //clear buffer
   if (sdiResponse.length() > 1)
     mySDI12.clearBuffer();
 
@@ -437,19 +442,6 @@ void loop(void)
       dataFile.close();
     }
 
-  }
-  //If new day, send daily temp. stats over IRIDIUM modem
-  //Write datastring and close logfile on SD card
-  dataFile = SD.open("HMM.TXT", FILE_WRITE);
-  if (dataFile)
-  {
-    dataFile.println(String(current_time.hour()) + "," + String(current_time.minute()) + "," + String(min_lim));
-    dataFile.close();
-  }
-
-  if ((current_time.hour() == 0) && (current_time.minute() <= min_lim))
-  {
-    send_daily_data();
   }
 
 
