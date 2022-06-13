@@ -374,7 +374,7 @@ void setup(void)
   }
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sddd", true, ',');
+  CSV_Parser cp("sdd", true, ',');
 
 
   //Read IRID.CSV
@@ -390,7 +390,6 @@ void setup(void)
   //Populate data arrays from logfile
   filename = (char**)cp["filename"];
   sample_intvl = (int16_t*)cp["sample_intvl"];
-  site_id = (int16_t*)cp["site_id"];
   irid_freq = (int16_t*)cp["irid_freq"];
 
   //Sleep time between samples in minutes
