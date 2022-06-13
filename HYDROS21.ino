@@ -28,7 +28,7 @@ int16_t *site_id; //User provided site ID # for PostgreSQL database
 int16_t *irid_freq; //User provided transmission interval for Iridium modem in hours
 float *turb_slope; //The linear slope parameter for converting 12-bit analog value to NTU, i.e., from calibration
 float *turb_intercept; //The intercept parameter for converting 12-bit analog to NTU, i.e., form calibration
-uint32_t site_id_int;
+int wiper_cnt=0;
 uint32_t irid_freq_hrs;
 uint32_t sleep_time;//Logger sleep time in milliseconds
 DateTime transmit_time;//Datetime varible for keeping IRIDIUM transmit time
@@ -145,6 +145,7 @@ int send_hourly_data()
   int16_t *h2o_depths;
   float *h2o_temps;
   int16_t *h2o_ecs;
+  int16_t *turb_ntus;
 
   //Read IRID.CSV
   cp.readSDfile("/HOURLY.CSV");
@@ -155,6 +156,7 @@ int send_hourly_data()
   h2o_depths = (int16_t*)cp["h2o_depth_mm"];
   h2o_temps = (float*)cp["h2o_temp_deg_c"];
   h2o_ecs = (int16_t*)cp["ec_dS_m"];
+  turb_ntus = (int16_t*)cp["turb_ntu"];
 
   //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
   uint8_t dt_buffer[340];
@@ -164,7 +166,7 @@ int send_hourly_data()
   //Get the start datetime stamp as string
 
 
-  String datestamp = String(site_id_int) + ":AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
+  String datestamp = "ABCD:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
 
   //Populate buffer with datestamp
   for (int i = 0; i < datestamp.length(); i++)
@@ -184,6 +186,7 @@ int send_hourly_data()
     float mean_depth = 999.0;
     float mean_temp = 999.0;
     float mean_ec = 999.0;
+    float mean_ntu = 999.0;
     boolean is_obs = false;
     int N = 0;
 
@@ -202,6 +205,7 @@ int send_hourly_data()
         float h2o_depth = (float) h2o_depths[i];
         float h2o_temp = h2o_temps[i];
         float h2o_ec = (float) h2o_ecs[i];
+        float turb_ntu = (float) turb_ntus[i];
 
         //Check if this is the first observation for the hour
         if (is_obs == false)
@@ -210,6 +214,7 @@ int send_hourly_data()
           mean_depth = h2o_depth;
           mean_temp = h2o_temp;
           mean_ec = h2o_ec;
+          mean_ntu = turb_ntu;
           is_obs = true;
           N++;
         } else {
@@ -217,6 +222,7 @@ int send_hourly_data()
           mean_depth = mean_depth + h2o_depth;
           mean_temp = mean_temp + h2o_temp;
           mean_ec = mean_ec + h2o_ec;
+          mean_ntu = mean_ntu + turb_ntu;
           N++;
         }
 
@@ -230,11 +236,12 @@ int send_hourly_data()
       mean_depth = mean_depth / N;
       mean_temp = (mean_temp / N) * 10.0;
       mean_ec = mean_ec / N;
+      mean_ntu = mean_ntu / N;
 
 
       //Assemble the data string, no EC for now
       //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ',' + String(round(mean_ntu))+':';
 
       //Populate the buffer with the datastring
       for (int i = 0; i < datastring.length(); i++)
@@ -356,12 +363,16 @@ String sample_hydros21()
   return hydrostring;
 }
 
+
+//This function reads Analite 195 analog turbidity probe and return the scaled NTU value from provided linear calibration 
 int sample_analite_195()
 {
+  //Power up analite 195
   digitalWrite(TurbSetPin, HIGH);
   delay(30);
   digitalWrite(TurbSetPin, LOW);
 
+  //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
   if (wiper_cnt >= 25)
   {
     digitalWrite(wiper, HIGH);
@@ -372,17 +383,21 @@ int sample_analite_195()
     wiper_cnt++;
   }
 
-  delay(1000);
+  //Let probe stabalize 
+  delay(1500);
 
+  //Read analog value from probe
   int turb_val = analogRead(TurbAlog);
 
-  int ntu = round((turb_slope[0] * (float)turb_val) * turn_intercept[0]);
+  //Convert analog value (0-4096) to NTU from provided linear calibration coefficients 
+  //int ntu = round((turb_slope[0] * (float)turb_val) + turb_intercept[0]);
 
-  digitalWrite(unset_relay, HIGH);
+  //Power down the probe 
+  digitalWrite(TurbUnsetPin, HIGH);
   delay(30);
-  digitalWrite(unset_relay, LOW);
+  digitalWrite(TurbUnsetPin, LOW);
 
-  return ntu
+  return turb_val;
 }
 
 
@@ -419,7 +434,7 @@ void setup(void)
   }
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sdddff", true, ',');
+  CSV_Parser cp("sddff", true, ',');
 
 
   //Read IRID.CSV
@@ -435,17 +450,15 @@ void setup(void)
   //Populate data arrays from logfile
   filename = (char**)cp["filename"];
   sample_intvl = (int16_t*)cp["sample_intvl"];
-  site_id = (int16_t*)cp["site_id"];
   irid_freq = (int16_t*)cp["irid_freq"];
   turb_slope = (float*)cp["turb_slope"];
   turb_intercept = (float*)cp["turb_intercept"];
-
+  
+  //Define global vars provided from parameter file 
   sleep_time = sample_intvl[0] * 60000;
   filestr = String(filename[0]);
-
   irid_freq_hrs = irid_freq[0];
 
-  site_id_int = site_id[0];
 
   // Make sure RTC is available
   while (!rtc.begin())
@@ -456,6 +469,7 @@ void setup(void)
     delay(500);
   }
 
+  //Set initial Iridium transmit time as the next hour 
   present_time = rtc.now();
   transmit_time = DateTime(present_time.year(),
                            present_time.month(),
@@ -483,6 +497,7 @@ void loop(void)
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
   {
+    //Send all data since last transmission over Iridium, averaged hourly
     int send_status = send_hourly_data();
 
     //Update next Iridium transmit time by 'irid_freq_hrs'
@@ -491,6 +506,7 @@ void loop(void)
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
+  delay(100);
   datastring = datastring+","+String(sample_analite_195());
 
 
