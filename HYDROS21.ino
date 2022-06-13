@@ -22,7 +22,6 @@ String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
 int16_t *site_id; //User provided site ID # for PostgreSQL database
 int16_t *irid_freq;
-uint32_t site_id_int;
 uint32_t irid_freq_hrs;
 uint32_t sleep_time;//Logger sleep time in milliseconds
 DateTime transmit_time;//Datetime varible for keeping IRIDIUM transmit time
@@ -154,11 +153,8 @@ int send_hourly_data()
   uint8_t dt_buffer[340];
   int buff_idx = 0;
 
-  //Add the site id as first entry of Iridium payload, required by CGI endpoint, followed by string identifying sensor type, see PostgreSQL table
-  //Get the start datetime stamp as string
-
-  
-  String datestamp = String(site_id_int) + ":AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
+  //Formatted for CGI script >> sensor_letter_code:date_of_first_obs:hour_of_first_obs:data  
+  String datestamp = "AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
 
   //Populate buffer with datestamp
   for (int i = 0; i < datestamp.length(); i++)
@@ -397,18 +393,15 @@ void setup(void)
   site_id = (int16_t*)cp["site_id"];
   irid_freq = (int16_t*)cp["irid_freq"];
 
+  //Sleep time between samples in minutes
   sleep_time = sample_intvl[0] * 60000;
+
+  //Log file name 
   filestr = String(filename[0]);
 
+  //Iridium transmission frequency
   irid_freq_hrs = irid_freq[0];
-
-  site_id_int = site_id[0];
-
-  dataFile = SD.open("HMM.TXT",FILE_WRITE);
-  dataFile.println(String(sleep_time)+","+String(irid_freq_hrs)+","+String(site_id_int));
-  dataFile.close();
   
-
   // Make sure RTC is available
   while (!rtc.begin())
   {
@@ -441,9 +434,6 @@ void loop(void)
   //Get the present datetime
   present_time = rtc.now();
 
-  dataFile = SD.open("HMM.TXT",FILE_WRITE);
-  dataFile.println("1:"+present_time.timestamp()+":"+transmit_time.timestamp());
-
 
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
@@ -452,11 +442,8 @@ void loop(void)
     
     //Update next Iridium transmit time by 'irid_freq_hrs'
     transmit_time = (transmit_time + TimeSpan(0,irid_freq_hrs, 0, 0));
-    dataFile.println("2:"+present_time.timestamp()+":"+transmit_time.timestamp());
   }
 
-  dataFile.println("3:"+present_time.timestamp()+":"+transmit_time.timestamp());
-  dataFile.close();
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
