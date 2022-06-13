@@ -14,6 +14,10 @@ const byte IridPwrPin = 6; // Pwr pin to Iridium modem
 const byte HydSetPin = 5; //Pwr set pin to HYDROS21
 const byte HydUnsetPin = 9; //Pwr unset pin to HYDROS21
 const byte dataPin = 12; // The pin of the SDI-12 data bus
+const byte wiper = A2;
+const byte TurbSetPin = 10;
+const byte TurbUnsetPin = 11;
+const byte TurbAlog = A1;
 
 
 /*Define global vars */
@@ -21,7 +25,9 @@ char **filename; //Name of log file
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
 int16_t *site_id; //User provided site ID # for PostgreSQL database
-int16_t *irid_freq;
+int16_t *irid_freq; //User provided transmission interval for Iridium modem in hours
+float *turb_slope; //The linear slope parameter for converting 12-bit analog value to NTU, i.e., from calibration
+float *turb_intercept; //The intercept parameter for converting 12-bit analog to NTU, i.e., form calibration
 uint32_t site_id_int;
 uint32_t irid_freq_hrs;
 uint32_t sleep_time;//Logger sleep time in milliseconds
@@ -157,7 +163,7 @@ int send_hourly_data()
   //Add the site id as first entry of Iridium payload, required by CGI endpoint, followed by string identifying sensor type, see PostgreSQL table
   //Get the start datetime stamp as string
 
-  
+
   String datestamp = String(site_id_int) + ":AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
 
   //Populate buffer with datestamp
@@ -350,6 +356,35 @@ String sample_hydros21()
   return hydrostring;
 }
 
+int sample_analite_195()
+{
+  digitalWrite(TurbSetPin, HIGH);
+  delay(30);
+  digitalWrite(TurbSetPin, LOW);
+
+  if (wiper_cnt >= 25)
+  {
+    digitalWrite(wiper, HIGH);
+    delay(6000);
+    wiper_cnt = 0;
+    digitalWrite(wiper, LOW);
+  } else {
+    wiper_cnt++;
+  }
+
+  delay(1000);
+
+  int turb_val = analogRead(TurbAlog);
+
+  int ntu = round((turb_slope[0] * (float)turb_val) * turn_intercept[0]);
+
+  digitalWrite(unset_relay, HIGH);
+  delay(30);
+  digitalWrite(unset_relay, LOW);
+
+  return ntu
+}
+
 
 /*
    The setup function. We only start the sensors, RTC and SD here
@@ -367,6 +402,12 @@ void setup(void)
   digitalWrite(HydUnsetPin, LOW);
   pinMode(IridPwrPin, OUTPUT);
   digitalWrite(IridPwrPin, LOW);
+  pinMode(wiper, OUTPUT);
+  digitalWrite(wiper, LOW);
+  pinMode(TurbSetPin, OUTPUT);
+  pinMode(TurbUnsetPin, OUTPUT);
+  pinMode(TurbAlog, INPUT);
+  analogReadResolution(12);
 
 
   //Make sure a SD is available (1-sec flash LED means SD card did not initialize)
@@ -378,7 +419,7 @@ void setup(void)
   }
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sddd", true, ',');
+  CSV_Parser cp("sdddff", true, ',');
 
 
   //Read IRID.CSV
@@ -396,6 +437,8 @@ void setup(void)
   sample_intvl = (int16_t*)cp["sample_intvl"];
   site_id = (int16_t*)cp["site_id"];
   irid_freq = (int16_t*)cp["irid_freq"];
+  turb_slope = (float*)cp["turb_slope"];
+  turb_intercept = (float*)cp["turb_intercept"];
 
   sleep_time = sample_intvl[0] * 60000;
   filestr = String(filename[0]);
@@ -403,11 +446,6 @@ void setup(void)
   irid_freq_hrs = irid_freq[0];
 
   site_id_int = site_id[0];
-
-  dataFile = SD.open("HMM.TXT",FILE_WRITE);
-  dataFile.println(String(sleep_time)+","+String(irid_freq_hrs)+","+String(site_id_int));
-  dataFile.close();
-  
 
   // Make sure RTC is available
   while (!rtc.begin())
@@ -441,25 +479,20 @@ void loop(void)
   //Get the present datetime
   present_time = rtc.now();
 
-  dataFile = SD.open("HMM.TXT",FILE_WRITE);
-  dataFile.println("1:"+present_time.timestamp()+":"+transmit_time.timestamp());
-
 
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
   {
     int send_status = send_hourly_data();
-    
-    //Update next Iridium transmit time by 'irid_freq_hrs'
-    transmit_time = (transmit_time + TimeSpan(0,irid_freq_hrs, 0, 0));
-    dataFile.println("2:"+present_time.timestamp()+":"+transmit_time.timestamp());
-  }
 
-  dataFile.println("3:"+present_time.timestamp()+":"+transmit_time.timestamp());
-  dataFile.close();
+    //Update next Iridium transmit time by 'irid_freq_hrs'
+    transmit_time = (transmit_time + TimeSpan(0, irid_freq_hrs, 0, 0));
+  }
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
+  datastring = datastring+","+String(sample_analite_195());
+
 
   //Write header if first time writing to the logfile
   if (!SD.exists(filestr.c_str()))
@@ -467,7 +500,7 @@ void loop(void)
     dataFile = SD.open(filestr.c_str(), FILE_WRITE);
     if (dataFile)
     {
-      dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m");
+      dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m,turb_ntu");
       dataFile.close();
     }
 
@@ -492,7 +525,7 @@ void loop(void)
     dataFile = SD.open("HOURLY.CSV", FILE_WRITE);
     if (dataFile)
     {
-      dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m");
+      dataFile.println("datetime,h2o_depth_mm,h2o_temp_deg_c,ec_dS_m,turb_ntu");
       dataFile.close();
     }
   } else {
