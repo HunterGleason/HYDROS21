@@ -18,6 +18,7 @@ const byte dataPin = 12; // The pin of the SDI-12 data bus
 
 /*Define global vars */
 char **filename; //Name of log file
+char **start_time;//Time at which logging begins
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
 int16_t *site_id; //User provided site ID # for PostgreSQL database
@@ -391,6 +392,7 @@ void setup(void)
   filename = (char**)cp["filename"];
   sample_intvl = (int16_t*)cp["sample_intvl"];
   irid_freq = (int16_t*)cp["irid_freq"];
+  start_time = (char**)cp["start_time"];
 
   //Sleep time between samples in minutes
   sleep_time = sample_intvl[0] * 60000;
@@ -400,6 +402,11 @@ void setup(void)
 
   //Iridium transmission frequency
   irid_freq_hrs = irid_freq[0];
+
+  //Get logging start time from parameter file 
+  int start_hour = String(start_time[0]).substring(0,3).toInt();
+  int start_minute = String(start_time[0]).substring(3,5).toInt();
+  int start_second = String(start_time[0]).substring(6,8).toInt();
   
   // Make sure RTC is available
   while (!rtc.begin())
@@ -414,9 +421,14 @@ void setup(void)
   transmit_time = DateTime(present_time.year(),
                            present_time.month(),
                            present_time.day(),
-                           present_time.hour() + 1,
-                           0,
-                           0);
+                           start_hour + irid_freq_hrs,
+                           start_minute,
+                           start_second);
+
+  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second)
+  {
+    delay(100);
+  }
 
   //Begin HYDROS21
   mySDI12.begin();
