@@ -190,16 +190,13 @@ void send_daily_data(DateTime now)
     int buff_idx = 0;
 
     //Get the start datetime stamp as string
-    String datestamp = String(datetimes[0]).substring(0, 10);
+    String datestamp = "ABC:" + String(datetimes[0]).substring(0, 10)+":0:";
 
     for (int i = 0; i < datestamp.length(); i++)
     {
       dt_buffer[buff_idx] = datestamp.charAt(buff_idx);
       buff_idx++;
     }
-
-    dt_buffer[buff_idx] = ':';
-    buff_idx++;
 
 
     for (int day_hour = 0; day_hour < 24; day_hour++)
