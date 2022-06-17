@@ -22,6 +22,7 @@ const byte TurbAlog = A1;
 
 /*Define global vars */
 char **filename; //Name of log file
+char **start_time; //Time at which to begin logging
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
 int16_t *site_id; //User provided site ID # for PostgreSQL database
@@ -138,7 +139,7 @@ int send_hourly_data()
 
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sdfd", true, ',');
+  CSV_Parser cp("sdfdd", true, ',');
 
   //Varibles for holding data fields
   char **datetimes;
@@ -384,16 +385,16 @@ int sample_analite_195()
   }
 
   //Let probe stabalize 
-  delay(1500);
+  delay(2000);
 
   //Read analog value from probe
   int turb_val = analogRead(TurbAlog);
 
   //Convert analog value (0-4096) to NTU from provided linear calibration coefficients 
-  //int ntu = round((turb_slope[0] * (float)turb_val) + turb_intercept[0]);
+  //int ntu = round(((turb_slope[0] * (float) turb_val) + turb_intercept[0]));
 
   //Power down the probe 
-  digitalWrite(TurbUnsetPin, HIGH);
+  digitalWrite(TurbUnsetPin, HIGH); 
   delay(30);
   digitalWrite(TurbUnsetPin, LOW);
 
@@ -434,7 +435,7 @@ void setup(void)
   }
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sddff", true, ',');
+  CSV_Parser cp("sddffs", true, ',');
 
 
   //Read IRID.CSV
@@ -453,11 +454,18 @@ void setup(void)
   irid_freq = (int16_t*)cp["irid_freq"];
   turb_slope = (float*)cp["turb_slope"];
   turb_intercept = (float*)cp["turb_intercept"];
+  start_time = (char**)cp["start_time"];
+  
   
   //Define global vars provided from parameter file 
   sleep_time = sample_intvl[0] * 60000;
   filestr = String(filename[0]);
   irid_freq_hrs = irid_freq[0];
+  
+  //Get logging start time from parameter file 
+  int start_hour = String(start_time[0]).substring(0,3).toInt();
+  int start_minute = String(start_time[0]).substring(3,5).toInt();
+  int start_second = String(start_time[0]).substring(6,8).toInt();
 
 
   // Make sure RTC is available
@@ -469,14 +477,20 @@ void setup(void)
     delay(500);
   }
 
-  //Set initial Iridium transmit time as the next hour 
+  //Set intial transmit time and start time, wait until start is reached
   present_time = rtc.now();
   transmit_time = DateTime(present_time.year(),
                            present_time.month(),
                            present_time.day(),
-                           present_time.hour() + 1,
-                           0,
-                           0);
+                           start_hour + irid_freq_hrs,
+                           start_minute,
+                           start_second);
+  digitalWrite(LED,HIGH);
+  while(rtc.now()<DateTime(present_time.year(),present_time.month(),present_time.day(),start_hour,start_minute,start_second))
+  {
+    delay(100);
+  }
+  digitalWrite(LED,LOW);
 
   //Begin HYDROS21
   mySDI12.begin();
