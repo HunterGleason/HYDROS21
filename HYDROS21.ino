@@ -155,7 +155,7 @@ int send_hourly_data()
   int buff_idx = 0;
 
   //Formatted for CGI script >> sensor_letter_code:date_of_first_obs:hour_of_first_obs:data  
-  String datestamp = "AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
+  String datestamp = "AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13) + ":";
 
   //Populate buffer with datestamp
   for (int i = 0; i < datestamp.length(); i++)
@@ -163,9 +163,6 @@ int send_hourly_data()
     dt_buffer[buff_idx] = datestamp.charAt(i);
     buff_idx++;
   }
-
-  dt_buffer[buff_idx] = ':';
-  buff_idx++;
 
   //For each hour 0-23
   for (int day_hour = 0; day_hour < 24; day_hour++)
@@ -375,7 +372,7 @@ void setup(void)
   }
 
   //Set paramters for parsing the log file
-  CSV_Parser cp("sdd", true, ',');
+  CSV_Parser cp("sdds", true, ',');
 
 
   //Read IRID.CSV
@@ -425,7 +422,7 @@ void setup(void)
                            start_minute,
                            start_second);
 
-  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second)
+  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second))
   {
     delay(100);
   }
@@ -445,7 +442,8 @@ void loop(void)
   //Get the present datetime
   present_time = rtc.now();
 
-
+  dataFile = SD.open("HMM.txt",FILE_WRITE);
+  dataFile.println("1:"+present_time.timestamp()+","+transmit_time.timestamp());
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
   {
@@ -453,8 +451,9 @@ void loop(void)
     
     //Update next Iridium transmit time by 'irid_freq_hrs'
     transmit_time = (transmit_time + TimeSpan(0,irid_freq_hrs, 0, 0));
+    dataFile.println("2:"+present_time.timestamp()+","+transmit_time.timestamp());
   }
-
+  dataFile.println("3:"+present_time.timestamp()+","+transmit_time.timestamp());
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
