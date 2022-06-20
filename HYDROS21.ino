@@ -115,6 +115,9 @@ int send_hourly_data()
   // Start the serial port connected to the satellite modem
   IridiumSerial.begin(19200);
 
+  //Prevent from trying to charge to quickly, low current setup 
+  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
+  
   // Begin satellite modem operation
   err = modem.begin();
   if (err != ISBD_SUCCESS)
@@ -237,6 +240,12 @@ int send_hourly_data()
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
+  if(err==10)
+  {
+    err = modem.begin();
+    err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    
+  }
   digitalWrite(LED, LOW);
 
   //Indicate the ISBD_SUCCESS
@@ -442,18 +451,20 @@ void loop(void)
   //Get the present datetime
   present_time = rtc.now();
 
-  dataFile = SD.open("HMM.txt",FILE_WRITE);
+  dataFile = SD.open("HMM1.txt",FILE_WRITE);
   dataFile.println("1:"+present_time.timestamp()+","+transmit_time.timestamp());
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
   {
     int send_status = send_hourly_data();
+    dataFile.println(String(send_status));
     
     //Update next Iridium transmit time by 'irid_freq_hrs'
     transmit_time = (transmit_time + TimeSpan(0,irid_freq_hrs, 0, 0));
     dataFile.println("2:"+present_time.timestamp()+","+transmit_time.timestamp());
   }
   dataFile.println("3:"+present_time.timestamp()+","+transmit_time.timestamp());
+  dataFile.close();
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
