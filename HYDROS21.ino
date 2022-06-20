@@ -190,7 +190,7 @@ void send_daily_data(DateTime now)
     int buff_idx = 0;
 
     //Get the start datetime stamp as string
-    String datestamp = "ABC:" + String(datetimes[0]).substring(0, 10)+":0:";
+    String datestamp = "AB:" + String(datetimes[0]).substring(0, 10)+":0:";
 
     for (int i = 0; i < datestamp.length(); i++)
     {
@@ -260,6 +260,11 @@ void send_daily_data(DateTime now)
     digitalWrite(LED, HIGH);
     //transmit binary buffer data via iridium
     err = modem.sendSBDBinary(dt_buffer,buff_idx);
+    if(err!=0)
+    {
+      modem.begin();
+      err = modem.sendSBDBinary(dt_buffer,buff_idx);
+    }
     digitalWrite(LED, LOW);
 
     if (err != ISBD_SUCCESS)
