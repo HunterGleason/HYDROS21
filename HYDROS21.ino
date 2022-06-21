@@ -122,6 +122,9 @@ int send_hourly_data()
   // Start the serial port connected to the satellite modem
   IridiumSerial.begin(19200);
 
+    //Prevent from trying to charge to quickly, low current setup 
+  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
+
   // Begin satellite modem operation
   err = modem.begin();
   if (err != ISBD_SUCCESS)
