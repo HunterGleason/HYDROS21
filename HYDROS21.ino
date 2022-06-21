@@ -431,10 +431,10 @@ void setup(void)
                            start_minute,
                            start_second);
 
-  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second))
-  {
-    delay(100);
-  }
+//  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second))
+//  {
+//    delay(100);
+//  }
 
   //Begin HYDROS21
   mySDI12.begin();
