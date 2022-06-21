@@ -224,8 +224,8 @@ int send_hourly_data()
 
 
       //Assemble the data string, no EC for now
-      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
       //Populate the buffer with the datastring
       for (int i = 0; i < datastring.length(); i++)
@@ -240,7 +240,7 @@ int send_hourly_data()
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
-  if(err==10)
+  if(err!=0)
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
