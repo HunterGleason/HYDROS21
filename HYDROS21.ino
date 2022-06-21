@@ -257,6 +257,13 @@ int send_hourly_data()
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
+  
+  //Retry if first attempt fails, this is fix to every-other issue
+  if(err != 0)
+  {
+    err = modem.begin();
+    err = modem.sendSBDBinary(dt_buffer, buff_idx);
+  }
   digitalWrite(LED, LOW);
 
   //Indicate the ISBD_SUCCESS
