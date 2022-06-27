@@ -158,7 +158,7 @@ int send_hourly_data()
   int buff_idx = 0;
 
   //Formatted for CGI script >> sensor_letter_code:date_of_first_obs:hour_of_first_obs:data  
-  String datestamp = "AB:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13) + ":";
+  String datestamp = "ABC:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13) + ":";
 
   //Populate buffer with datestamp
   for (int i = 0; i < datestamp.length(); i++)
@@ -411,7 +411,8 @@ void setup(void)
 
   //Get logging start time from parameter file 
   int start_hour = String(start_time[0]).substring(0,3).toInt();
-  int start_minute = String(start_time[0]).substring(3,5).toInt();
+  int start_minute = String(start_time[0]).sub
+  string(3,5).toInt();
   int start_second = String(start_time[0]).substring(6,8).toInt();
   
   // Make sure RTC is available
