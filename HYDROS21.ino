@@ -387,7 +387,7 @@ int sample_analite_195()
   if (wiper_cnt >= 25)
   {
     digitalWrite(wiper, HIGH);
-    delay(6000);
+    delay(8000);
     wiper_cnt = 0;
     digitalWrite(wiper, LOW);
   } else {
