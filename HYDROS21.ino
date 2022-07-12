@@ -1,37 +1,48 @@
+/*
+ * Date: 2022-07-11
+ * Contact: Hunter Gleason (Hunter.Gleason@alumni.unbc.ca)
+ * Organization: Ministry of Forests (MOF) 
+ * Description: This script is written for the purpose of gathering hydrometric data, including the real time transmission of the data via the Iridium satallite network.
+ * Using the HYDROS21 probe () water level, temperature and electrical conductivity are measured and stored to a SD card at a specified logging interval. Hourly averages 
+ * of the data are transmitted over Iridium at a specified transmission frequency. The string output transmitted over Iridium is formatted to be compatible with digestion 
+ * into a database run by MOF. The various parameters required by the script are specified by a TXT file on the SD card used for logging, for more details on usage of this 
+ * script please visit the GitHub repository (). 
+ */
+
+
 /*Include the libraries we need*/
 #include "RTClib.h" //Needed for communication with Real Time Clock
-#include <SPI.h>//Needed for working with SD card
-#include <SD.h>//Needed for working with SD card
-#include "ArduinoLowPower.h"//Needed for putting Feather M0 to sleep between samples
-#include <IridiumSBD.h>//Needed for communication with IRIDIUM modem 
-#include <CSV_Parser.h>//Needed for parsing CSV data
-#include <SDI12.h>//Needed for SDI-12 communication
+#include <SPI.h> //Needed for working with SD card
+#include <SD.h> //Needed for working with SD card
+#include "ArduinoLowPower.h" //Needed for putting Feather M0 to sleep between samples
+#include <IridiumSBD.h> //Needed for communication with IRIDIUM modem 
+#include <CSV_Parser.h> //Needed for parsing CSV data
+#include <SDI12.h> //Needed for SDI-12 communication
 
 /*Define global constants*/
 const byte LED = 13; // Built in LED pin
-const byte chipSelect = 4; // For SD card
-const byte IridPwrPin = 6; // Pwr pin to Iridium modem
-const byte HydSetPin = 5; //Pwr set pin to HYDROS21
-const byte HydUnsetPin = 9; //Pwr unset pin to HYDROS21
+const byte chipSelect = 4; // Chip select pin for SD card
+const byte IridPwrPin = 6; // Power base PN2222 transistor pin to Iridium modem
+const byte HydSetPin = 5; //Power relay set pin to HYDROS21
+const byte HydUnsetPin = 9; //Power relay unset pin to HYDROS21
 const byte dataPin = 12; // The pin of the SDI-12 data bus
 
 
 /*Define global vars */
-char **filename; //Name of log file
-char **start_time;//Time at which logging begins
-String filestr; //Filename as string
-int16_t *sample_intvl; //Sample interval in minutes
-int16_t *site_id; //User provided site ID # for PostgreSQL database
-int16_t *irid_freq;
-uint32_t irid_freq_hrs;
-uint32_t sleep_time;//Logger sleep time in milliseconds
-DateTime transmit_time;//Datetime varible for keeping IRIDIUM transmit time
-DateTime present_time;//Var for keeping the current time
+char **filename; // Name of log file(Read from PARAM.txt) 
+char **start_time;// Time at which first Iridum transmission should occur (Read from PARAM.txt) 
+String filestr; // Filename as string
+int16_t *sample_intvl; // Sample interval in minutes (Read from PARAM.txt) 
+int16_t *irid_freq; // Iridium transmit freqency in hours (Read from PARAM.txt) 
+uint32_t irid_freq_hrs; // Iridium transmit freqency in hours 
+uint32_t sleep_time;// Logger sleep time in milliseconds
+DateTime transmit_time;// Datetime varible for keeping IRIDIUM transmit time
+DateTime present_time;// Var for keeping the current time
 int err; //IRIDIUM status var
-String myCommand   = "";//SDI-12 command var
-String sdiResponse = "";//SDI-12 responce var
+String myCommand   = "";// SDI-12 command var
+String sdiResponse = "";// SDI-12 responce var
 
-/*Define Iridium seriel communication COM1*/
+/*Define Iridium seriel communication as Serial1 */
 #define IridiumSerial Serial1
 
 /*SDI-12 sensor address, assumed to be 0*/
@@ -46,10 +57,10 @@ SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 
 
 
-/*Function pings RTC for datetime and returns formated datestamp YYYY-MM-DD HH:MM:SS*/
+/*Function pings RTC for datetime and returns formated datestamp 'YYYY-MM-DD HH:MM:SS,' */
 String gen_date_str(DateTime now) {
 
-  //Format current date time values for writing to SD
+  // Format current date time values for writing to SD
   String yr_str = String(now.year());
   String mnth_str;
   if (now.month() >= 10)
@@ -92,7 +103,7 @@ String gen_date_str(DateTime now) {
     sec_str = "0" + String(now.second());
   }
 
-  //Assemble a consistently formatted date string for logging to SD or sending or IRIDIUM modem
+  // Assemble a consistently formatted date string for logging to SD or sending over IRIDIUM modem
   String datestring = yr_str + "-" + mnth_str + "-" + day_str + " " + hr_str + ":" + min_str + ":" + sec_str + ",";
 
   return datestring;
@@ -104,21 +115,22 @@ String gen_date_str(DateTime now) {
 int send_hourly_data()
 {
 
-  //For capturing Iridium errors
+  // For capturing Iridium errors
   int err;
 
-  //Provide power to Iridium Modem
+  // Provide power to Iridium Modem
   digitalWrite(IridPwrPin, HIGH);
+  // Allow warm up 
   delay(200);
 
 
   // Start the serial port connected to the satellite modem
   IridiumSerial.begin(19200);
 
-  //Prevent from trying to charge to quickly, low current setup 
+  // Prevent from trying to charge to quickly, low current setup 
   modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
   
-  // Begin satellite modem operation
+  // Begin satellite modem operation, blink LED (1-sec) if there was an issue
   err = modem.begin();
   if (err != ISBD_SUCCESS)
   {
@@ -134,16 +146,16 @@ int send_hourly_data()
 
 
 
-  //Set paramters for parsing the log file
+  // Set paramters for parsing the log file
   CSV_Parser cp("sdfd", true, ',');
 
-  //Varibles for holding data fields
+  // Varibles for holding data fields
   char **datetimes;
   int16_t *h2o_depths;
   float *h2o_temps;
   int16_t *h2o_ecs;
 
-  //Read IRID.CSV
+  // Read HOURLY.CSV file 
   cp.readSDfile("/HOURLY.CSV");
 
 
@@ -155,6 +167,8 @@ int send_hourly_data()
 
   //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
   uint8_t dt_buffer[340];
+  
+  //Buffer index counter var 
   int buff_idx = 0;
 
   //Formatted for CGI script >> sensor_letter_code:date_of_first_obs:hour_of_first_obs:data  
@@ -172,10 +186,10 @@ int send_hourly_data()
   {
 
     //Declare average vars for each HYDROS21 output
-    float mean_depth = 999.0;
-    float mean_temp = 999.0;
-    float mean_ec = 999.0;
-    boolean is_obs = false;
+    float mean_depth;
+    float mean_temp;
+    float mean_ec;
+    boolean is_first_obs = false;
     int N = 0;
 
     //For each observation in the HOURLY.CSV
@@ -195,13 +209,13 @@ int send_hourly_data()
         float h2o_ec = (float) h2o_ecs[i];
 
         //Check if this is the first observation for the hour
-        if (is_obs == false)
+        if (is_first_obs == false)
         {
           //Update average vars
           mean_depth = h2o_depth;
           mean_temp = h2o_temp;
           mean_ec = h2o_ec;
-          is_obs = true;
+          is_first_obs = true;
           N++;
         } else {
           //Update average vars
@@ -223,8 +237,10 @@ int send_hourly_data()
       mean_ec = mean_ec / N;
 
 
-      //Assemble the data string, no EC for now
+      //Assemble the data string
       String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      
+      //Reccomond dropping one var if Iridium freqency is more the 12 hrs 
       //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
       //Populate the buffer with the datastring
@@ -236,8 +252,9 @@ int send_hourly_data()
     }
   }
 
-  //Indicate the modem is trying to send
+  //Indicate the modem is trying to send with LED 
   digitalWrite(LED, HIGH);
+  
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
   if(err!=0)
@@ -248,7 +265,7 @@ int send_hourly_data()
   }
   digitalWrite(LED, LOW);
 
-  //Indicate the ISBD_SUCCESS
+  //Flash LED (5-sec) twice if failed transmission 
   if (err != ISBD_SUCCESS)
   {
     digitalWrite(LED, HIGH);
@@ -262,7 +279,7 @@ int send_hourly_data()
   }
 
 
-  //Kill power to Iridium Modem
+  //Kill power to Iridium Modem by writing the base pin low on PN2222 transistor 
   digitalWrite(IridPwrPin, LOW);
   delay(30);
 
@@ -372,7 +389,7 @@ void setup(void)
   digitalWrite(IridPwrPin, LOW);
 
 
-  //Make sure a SD is available (1-sec flash LED means SD card did not initialize)
+  //Make sure a SD is available (2-sec flash LED means SD card did not initialize)
   while (!SD.begin(chipSelect)) {
     digitalWrite(LED, HIGH);
     delay(2000);
@@ -380,11 +397,11 @@ void setup(void)
     delay(2000);
   }
 
-  //Set paramters for parsing the log file
+  //Set paramters for parsing the parameter file PARAM.txt 
   CSV_Parser cp("sdds", true, ',');
 
 
-  //Read IRID.CSV
+  //Read the parameter file 'PARAM.txt', blink (1-sec) if fail to read 
   while (!cp.readSDfile("/PARAM.txt"))
   {
     digitalWrite(LED, HIGH);
@@ -394,25 +411,24 @@ void setup(void)
   }
 
 
-  //Populate data arrays from logfile
+  //Populate data arrays from parameter file PARAM.txt
   filename = (char**)cp["filename"];
   sample_intvl = (int16_t*)cp["sample_intvl"];
   irid_freq = (int16_t*)cp["irid_freq"];
   start_time = (char**)cp["start_time"];
 
-  //Sleep time between samples in minutes
+  //Sleep time between samples in miliseconds 
   sleep_time = sample_intvl[0] * 60000;
 
   //Log file name 
   filestr = String(filename[0]);
 
-  //Iridium transmission frequency
+  //Iridium transmission frequency in hours
   irid_freq_hrs = irid_freq[0];
 
   //Get logging start time from parameter file 
   int start_hour = String(start_time[0]).substring(0,3).toInt();
-  int start_minute = String(start_time[0]).sub
-  string(3,5).toInt();
+  int start_minute = String(start_time[0]).substring(3,5).toInt();
   int start_second = String(start_time[0]).substring(6,8).toInt();
   
   // Make sure RTC is available
@@ -424,18 +440,17 @@ void setup(void)
     delay(500);
   }
 
+  //Get the present time
   present_time = rtc.now();
+
+  //Update the transmit time to the start time for present date 
   transmit_time = DateTime(present_time.year(),
                            present_time.month(),
                            present_time.day(),
                            start_hour + irid_freq_hrs,
                            start_minute,
                            start_second);
-
-//  while(rtc.now()<DateTime(present_time.year(),present_time.month(),start_hour,start_minute,start_second))
-//  {
-//    delay(100);
-//  }
+                           
 
   //Begin HYDROS21
   mySDI12.begin();
@@ -451,21 +466,17 @@ void loop(void)
 
   //Get the present datetime
   present_time = rtc.now();
-
-  dataFile = SD.open("HMM1.txt",FILE_WRITE);
-  dataFile.println("1:"+present_time.timestamp()+","+transmit_time.timestamp());
+  
   //If the presnet time has reached transmit_time send all data since last transmission averaged hourly
   if (present_time >= transmit_time)
   {
+    // Send the hourly data over Iridium 
     int send_status = send_hourly_data();
-    dataFile.println(String(send_status));
     
     //Update next Iridium transmit time by 'irid_freq_hrs'
     transmit_time = (transmit_time + TimeSpan(0,irid_freq_hrs, 0, 0));
-    dataFile.println("2:"+present_time.timestamp()+","+transmit_time.timestamp());
   }
-  dataFile.println("3:"+present_time.timestamp()+","+transmit_time.timestamp());
-  dataFile.close();
+
 
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
@@ -505,6 +516,7 @@ void loop(void)
       dataFile.close();
     }
   } else {
+    
     //Write datastring and close logfile on SD card
     dataFile = SD.open("HOURLY.CSV", FILE_WRITE);
     if (dataFile)
