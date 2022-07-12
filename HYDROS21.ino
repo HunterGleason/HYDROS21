@@ -187,10 +187,10 @@ int send_hourly_data()
   {
 
     //Declare average vars for each HYDROS21 output
-    float mean_depth = 999.0;
-    float mean_temp = 999.0;
-    float mean_ec = 999.0;
-    float mean_ntu = 999.0;
+    float mean_depth;
+    float mean_temp;
+    float mean_ec;
+    float mean_ntu;
     boolean is_obs = false;
     int N = 0;
 
@@ -384,10 +384,10 @@ int sample_analite_195()
   digitalWrite(TurbSetPin, LOW);
 
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
-  if (wiper_cnt >= 25)
+  if (wiper_cnt >= 15)
   {
     digitalWrite(wiper, HIGH);
-    delay(8000);
+    delay(6000);
     wiper_cnt = 0;
     digitalWrite(wiper, LOW);
   } else {
