@@ -384,7 +384,7 @@ int sample_analite_195()
   digitalWrite(TurbSetPin, LOW);
 
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
-  if (wiper_cnt >= 15)
+  if (wiper_cnt >= 20)
   {
     digitalWrite(wiper, HIGH);
     delay(6000);
@@ -392,10 +392,11 @@ int sample_analite_195()
     digitalWrite(wiper, LOW);
   } else {
     wiper_cnt++;
+    digitalWrite(wiper,LOW);
   }
 
   //Let probe stabalize 
-  delay(2000);
+  delay(16000);
 
   //Read analog value from probe
   int turb_val = analogRead(TurbAlog);
@@ -495,12 +496,7 @@ void setup(void)
                            start_hour + irid_freq_hrs,
                            start_minute,
                            start_second);
-  digitalWrite(LED,HIGH);
-  while(rtc.now()<DateTime(present_time.year(),present_time.month(),present_time.day(),start_hour,start_minute,start_second))
-  {
-    delay(100);
-  }
-  digitalWrite(LED,LOW);
+
 
   //Begin HYDROS21
   mySDI12.begin();
