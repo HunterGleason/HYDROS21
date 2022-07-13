@@ -257,10 +257,13 @@ int send_hourly_data()
   
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
-  if(err!=0)
+  int attempt = 1;
+  
+  while(err!=0 && attempt <= 3)
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    attempt = attempt+1; 
     
   }
   digitalWrite(LED, LOW);
