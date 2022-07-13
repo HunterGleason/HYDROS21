@@ -28,6 +28,8 @@ int16_t *sample_intvl; //Sample interval in minutes
 int16_t *site_id; //User provided site ID # for PostgreSQL database
 int16_t *irid_freq; //User provided transmission interval for Iridium modem in hours
 float *turb_slope; //The linear slope parameter for converting 12-bit analog value to NTU, i.e., from calibration
+float m;
+float b;
 float *turb_intercept; //The intercept parameter for converting 12-bit analog to NTU, i.e., form calibration
 int wiper_cnt = 0;
 uint32_t irid_freq_hrs;
@@ -261,26 +263,30 @@ int send_hourly_data()
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
 
+  int attempts = 1;
+
   //Retry if first attempt fails, this is fix to every-other issue
-  if (err != 0)
+  while (err != 0 && attempts <= 3)
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    attempts = attempts + 1;
   }
+
   digitalWrite(LED, LOW);
 
   //Indicate the ISBD_SUCCESS
-  if (err != ISBD_SUCCESS)
-  {
-    digitalWrite(LED, HIGH);
-    delay(5000);
-    digitalWrite(LED, LOW);
-    delay(5000);
-    digitalWrite(LED, HIGH);
-    delay(5000);
-    digitalWrite(LED, LOW);
-    delay(5000);
-  }
+  //  if (err != ISBD_SUCCESS)
+  //  {
+  //    digitalWrite(LED, HIGH);
+  //    delay(5000);
+  //    digitalWrite(LED, LOW);
+  //    delay(5000);
+  //    digitalWrite(LED, HIGH);
+  //    delay(5000);
+  //    digitalWrite(LED, LOW);
+  //    delay(5000);
+  //  }
 
 
   //Kill power to Iridium Modem
@@ -395,19 +401,26 @@ int sample_analite_195()
 
     wiper_cnt = 0;
 
-    //Let probe stabalize
-    delay(16000);
+    //Let wiper complete rotation
+    delay(25000);
+
   } else {
+
     wiper_cnt++;
     digitalWrite(wiper, LOW);
+
   }
 
 
   //Read analog value from probe
-  int turb_val = analogRead(TurbAlog);
+  int turb_int = analogRead(TurbAlog);
+  float x = float(turb_int);
+
 
   //Convert analog value (0-4096) to NTU from provided linear calibration coefficients
-  int ntu = round(((turb_slope[0] * (float) turb_val) + turb_intercept[0]));
+  float y = (m * x) + b;
+
+  int ntu = round(y);
 
   //Power down the probe
   digitalWrite(TurbUnsetPin, HIGH);
@@ -477,6 +490,8 @@ void setup(void)
   sleep_time = sample_intvl[0] * 1000;
   filestr = String(filename[0]);
   irid_freq_hrs = irid_freq[0];
+  m = turb_slope[0];
+  b = turb_intercept[0];
 
   //Get logging start time from parameter file
   int start_hour = String(start_time[0]).substring(0, 3).toInt();
