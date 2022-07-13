@@ -29,7 +29,7 @@ int16_t *site_id; //User provided site ID # for PostgreSQL database
 int16_t *irid_freq; //User provided transmission interval for Iridium modem in hours
 float *turb_slope; //The linear slope parameter for converting 12-bit analog value to NTU, i.e., from calibration
 float *turb_intercept; //The intercept parameter for converting 12-bit analog to NTU, i.e., form calibration
-int wiper_cnt=0;
+int wiper_cnt = 0;
 uint32_t irid_freq_hrs;
 uint32_t sleep_time;//Logger sleep time in milliseconds
 DateTime transmit_time;//Datetime varible for keeping IRIDIUM transmit time
@@ -122,7 +122,7 @@ int send_hourly_data()
   // Start the serial port connected to the satellite modem
   IridiumSerial.begin(19200);
 
-    //Prevent from trying to charge to quickly, low current setup 
+  //Prevent from trying to charge to quickly, low current setup
   modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
 
   // Begin satellite modem operation
@@ -245,7 +245,7 @@ int send_hourly_data()
 
       //Assemble the data string, no EC for now
       //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ',' + String(round(mean_ntu))+':';
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ',' + String(round(mean_ntu)) + ':';
 
       //Populate the buffer with the datastring
       for (int i = 0; i < datastring.length(); i++)
@@ -260,9 +260,9 @@ int send_hourly_data()
   digitalWrite(LED, HIGH);
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
-  
+
   //Retry if first attempt fails, this is fix to every-other issue
-  if(err != 0)
+  if (err != 0)
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
@@ -375,7 +375,7 @@ String sample_hydros21()
 }
 
 
-//This function reads Analite 195 analog turbidity probe and return the scaled NTU value from provided linear calibration 
+//This function reads Analite 195 analog turbidity probe and return the scaled NTU value from provided linear calibration
 int sample_analite_195()
 {
   //Power up analite 195
@@ -383,33 +383,38 @@ int sample_analite_195()
   delay(30);
   digitalWrite(TurbSetPin, LOW);
 
+  //Let probe settle
+  delay(500);
+
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
   if (wiper_cnt >= 20)
   {
     digitalWrite(wiper, HIGH);
-    delay(6000);
-    wiper_cnt = 0;
+    delay(100);
     digitalWrite(wiper, LOW);
+
+    wiper_cnt = 0;
+
+    //Let probe stabalize
+    delay(16000);
   } else {
     wiper_cnt++;
-    digitalWrite(wiper,LOW);
+    digitalWrite(wiper, LOW);
   }
 
-  //Let probe stabalize 
-  delay(16000);
 
   //Read analog value from probe
   int turb_val = analogRead(TurbAlog);
 
-  //Convert analog value (0-4096) to NTU from provided linear calibration coefficients 
-  //int ntu = round(((turb_slope[0] * (float) turb_val) + turb_intercept[0]));
+  //Convert analog value (0-4096) to NTU from provided linear calibration coefficients
+  int ntu = round(((turb_slope[0] * (float) turb_val) + turb_intercept[0]));
 
-  //Power down the probe 
-  digitalWrite(TurbUnsetPin, HIGH); 
+  //Power down the probe
+  digitalWrite(TurbUnsetPin, HIGH);
   delay(30);
   digitalWrite(TurbUnsetPin, LOW);
 
-  return turb_val;
+  return ntu;
 }
 
 
@@ -466,17 +471,17 @@ void setup(void)
   turb_slope = (float*)cp["turb_slope"];
   turb_intercept = (float*)cp["turb_intercept"];
   start_time = (char**)cp["start_time"];
-  
-  
-  //Define global vars provided from parameter file 
-  sleep_time = sample_intvl[0] * 60000;
+
+
+  //Define global vars provided from parameter file
+  sleep_time = sample_intvl[0] * 1000;
   filestr = String(filename[0]);
   irid_freq_hrs = irid_freq[0];
-  
-  //Get logging start time from parameter file 
-  int start_hour = String(start_time[0]).substring(0,3).toInt();
-  int start_minute = String(start_time[0]).substring(3,5).toInt();
-  int start_second = String(start_time[0]).substring(6,8).toInt();
+
+  //Get logging start time from parameter file
+  int start_hour = String(start_time[0]).substring(0, 3).toInt();
+  int start_minute = String(start_time[0]).substring(3, 5).toInt();
+  int start_second = String(start_time[0]).substring(6, 8).toInt();
 
 
   // Make sure RTC is available
@@ -527,7 +532,7 @@ void loop(void)
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
   delay(100);
-  datastring = datastring+","+String(sample_analite_195());
+  datastring = datastring + "," + String(sample_analite_195());
 
 
   //Write header if first time writing to the logfile
