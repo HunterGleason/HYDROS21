@@ -46,11 +46,11 @@ This section outlines the steps for operating the logger.
 The first step to using the logger is to obtain a micro-SD card and add to it a parameter file the logger will use to define several important variables. This file must be named "PARAM.txt" (case sensitive),comma delimited, and should look like the example parameter file shown below:
 
 ```
-filename,sample_intvl
-MYFILE.CSV,10
+filename,sample_intvl,irid_freq,start_time
+MYFILE.CSV,10,12,00:00:00
 ```
 
-Where the "filename" header declares the name of the log file to be written (!!MUST BE LESS THEN 8 CHARACTERS IN LENGTH!!) and is user defined, the "sampl_intvl" header stands for sample interval and declares the sampling rate of the logger in minutes. Note that the extension ".CSV" is capitalized. Note that every sample will be written to the SD card but only hourly averages will be sent over the IRIDIUM modem daily. The sapling rate should be <60 minutes.
+Where the "filename" header declares the name of the log file to be written (!!MUST BE LESS THEN 8 CHARACTERS IN LENGTH!!) and is user defined, the "sampl_intvl" header stands for sample interval and declares the sampling rate of the logger in seconds. Note that the extension ".CSV" is capitalized. Note that every sample will be written to the SD card but only hourly averages will be sent over the IRIDIUM modem daily. The sapling rate should be <60 minutes.
 
 ## Set the time on the RTC
 To keep track of time this code relies on a Real Time Clock, specifically the PCF8523. To set the time run the [pcf8523 script](https://learn.adafruit.com/adafruit-pcf8523-real-time-clock/rtc-with-arduino) from the "RTClib" library and upload it to the MCU BEFORE uploading the logging script. We recommend setting RTC to UTC time to avoid complications with daylight savings time. 
