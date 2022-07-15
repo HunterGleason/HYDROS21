@@ -393,7 +393,7 @@ int sample_analite_195()
   delay(500);
 
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
-  if (wiper_cnt >= 20)
+  if (wiper_cnt >= 5)
   {
     digitalWrite(wiper, HIGH);
     delay(100);
@@ -402,7 +402,7 @@ int sample_analite_195()
     wiper_cnt = 0;
 
     //Let wiper complete rotation
-    delay(25000);
+    delay(30000);
 
   } else {
 
