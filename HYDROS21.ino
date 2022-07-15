@@ -270,23 +270,15 @@ int send_hourly_data()
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    if(err == 13)
+    {
+      attempt = 3;
+    }
+    
     attempts = attempts + 1;
   }
 
   digitalWrite(LED, LOW);
-
-  //Indicate the ISBD_SUCCESS
-  //  if (err != ISBD_SUCCESS)
-  //  {
-  //    digitalWrite(LED, HIGH);
-  //    delay(5000);
-  //    digitalWrite(LED, LOW);
-  //    delay(5000);
-  //    digitalWrite(LED, HIGH);
-  //    delay(5000);
-  //    digitalWrite(LED, LOW);
-  //    delay(5000);
-  //  }
 
 
   //Kill power to Iridium Modem
@@ -295,7 +287,10 @@ int send_hourly_data()
 
 
   //Remove previous daily values CSV
-  SD.remove("/HOURLY.CSV");
+  if(err == 0 || err == 13)
+  {
+    SD.remove("/HOURLY.CSV");
+  }
 
   return err;
 
@@ -412,9 +407,16 @@ int sample_analite_195()
   }
 
 
-  //Read analog value from probe
-  int turb_int = analogRead(TurbAlog);
-  float x = float(turb_int);
+  int avg_turb = analogRead(TurbAlog);
+
+  for(int i = 0; i<9; i++)
+  {
+    //Read analog value from probe
+    avg_turb = avg_turb+analogRead(TurbAlog);
+    delay(50)
+  }
+
+  float x = float(avg_turb)/10.0;
 
 
   //Convert analog value (0-4096) to NTU from provided linear calibration coefficients
