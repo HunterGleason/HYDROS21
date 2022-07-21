@@ -14,10 +14,10 @@ const byte IridPwrPin = 6; // Pwr pin to Iridium modem
 const byte HydSetPin = 5; //Pwr set pin to HYDROS21
 const byte HydUnsetPin = 9; //Pwr unset pin to HYDROS21
 const byte dataPin = 12; // The pin of the SDI-12 data bus
-const byte wiper = A2;
-const byte TurbSetPin = 10;
-const byte TurbUnsetPin = 11;
-const byte TurbAlog = A1;
+const byte wiper = A2; // Pin for wiper on Analite 195
+const byte TurbSetPin = 10; // Pin to set pwr relay to Analite 195
+const byte TurbUnsetPin = 11; // Pin to unset pwr relay to Analite 195
+const byte TurbAlog = A1; // Pin for reading analog outout from voltage divder (R1=1000 Ohm, R2=5000 Ohm) conncted to Analite 195
 
 
 /*Define global vars */
@@ -25,7 +25,6 @@ char **filename; //Name of log file
 char **start_time; //Time at which to begin logging
 String filestr; //Filename as string
 int16_t *sample_intvl; //Sample interval in minutes
-int16_t *site_id; //User provided site ID # for PostgreSQL database
 int16_t *irid_freq; //User provided transmission interval for Iridium modem in hours
 float *turb_slope; //The linear slope parameter for converting 12-bit analog value to NTU, i.e., from calibration
 float m;
@@ -168,10 +167,8 @@ int send_hourly_data()
   uint8_t dt_buffer[340];
   int buff_idx = 0;
 
-  //Add the site id as first entry of Iridium payload, required by CGI endpoint, followed by string identifying sensor type, see PostgreSQL table
+  //Specific format expected by CGI endpoint, followed by string identifying sensor type, see PostgreSQL table
   //Get the start datetime stamp as string
-
-
   String datestamp = "ABCD:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
 
   //Populate buffer with datestamp
@@ -270,6 +267,11 @@ int send_hourly_data()
   {
     err = modem.begin();
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
+    if( err==13)
+    {
+       attempts = 3;
+    }
+    
     attempts = attempts + 1;
   }
 
@@ -390,7 +392,7 @@ int sample_analite_195()
   digitalWrite(TurbSetPin, LOW);
 
   //Let probe settle
-  delay(500);
+  delay(1000);
 
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
   if (wiper_cnt >= 5)
@@ -452,6 +454,8 @@ void setup(void)
   pinMode(TurbSetPin, OUTPUT);
   pinMode(TurbUnsetPin, OUTPUT);
   pinMode(TurbAlog, INPUT);
+  
+  //Set analog resolution to 12-bit
   analogReadResolution(12);
 
 
