@@ -260,22 +260,14 @@ int send_hourly_data()
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
 
-  int attempts = 1;
-
-  //Retry if first attempt fails, this is fix to every-other issue
-  while (err != 0 && attempts <= 3)
+  if(err!=0 && err!=13)
   {
     err = modem.begin();
+    modem.adjustSendReceiveTimeout(500);
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
-
-    if( err==13)
-    {
-       attempts = 3;
-    }
-    
-    attempts = attempts + 1;
   }
 
+  
   digitalWrite(LED, LOW);
 
 
