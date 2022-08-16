@@ -55,60 +55,6 @@ IridiumSBD modem(IridiumSerial); // Declare the IridiumSBD object
 SDI12 mySDI12(dataPin);// Define the SDI-12 bus
 
 
-
-
-/*Function pings RTC for datetime and returns formated datestamp 'YYYY-MM-DD HH:MM:SS,' */
-String gen_date_str(DateTime now) {
-
-  // Format current date time values for writing to SD
-  String yr_str = String(now.year());
-  String mnth_str;
-  if (now.month() >= 10)
-  {
-    mnth_str = String(now.month());
-  } else {
-    mnth_str = "0" + String(now.month());
-  }
-
-  String day_str;
-  if (now.day() >= 10)
-  {
-    day_str = String(now.day());
-  } else {
-    day_str = "0" + String(now.day());
-  }
-
-  String hr_str;
-  if (now.hour() >= 10)
-  {
-    hr_str = String(now.hour());
-  } else {
-    hr_str = "0" + String(now.hour());
-  }
-
-  String min_str;
-  if (now.minute() >= 10)
-  {
-    min_str = String(now.minute());
-  } else {
-    min_str = "0" + String(now.minute());
-  }
-
-
-  String sec_str;
-  if (now.second() >= 10)
-  {
-    sec_str = String(now.second());
-  } else {
-    sec_str = "0" + String(now.second());
-  }
-
-  // Assemble a consistently formatted date string for logging to SD or sending over IRIDIUM modem
-  String datestring = yr_str + "-" + mnth_str + "-" + day_str + " " + hr_str + ":" + min_str + ":" + sec_str + ",";
-
-  return datestring;
-}
-
 /*Function reads data from a .csv logfile, and uses Iridium modem to send all observations
    since the previous transmission over satellite at midnight on the RTC.
 */
@@ -186,9 +132,9 @@ int send_hourly_data()
   {
 
     //Declare average vars for each HYDROS21 output
-    float mean_depth;
-    float mean_temp;
-    float mean_ec;
+    float mean_depth = -9999.0;
+    float mean_temp = -9999.0;
+    float mean_ec = -9999.0;
     boolean is_first_obs = false;
     int N = 0;
 
@@ -259,7 +205,7 @@ int send_hourly_data()
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
 
   //If transmission failed and message is not too large try once more, increase time out
-  if(err != 0 && err != 13)
+  if (err != ISBD_SUCCESS)
   {
     err = modem.begin();
     modem.adjustSendReceiveTimeout(500);
@@ -275,10 +221,9 @@ int send_hourly_data()
 
 
   //Remove previous daily values CSV as long as send was succesfull, or if message is more than 340 bites
-  if (err == 0 || err == 13)
-  {
-    SD.remove("/HOURLY.CSV");
-  }
+
+  SD.remove("/HOURLY.CSV");
+
   return err;
 
 
@@ -351,7 +296,7 @@ String sample_hydros21()
     mySDI12.clearBuffer();
 
   //Assemble datastring
-  String hydrostring = gen_date_str(present_time);
+  String hydrostring = present_time.timestamp() + ",";
   hydrostring = hydrostring + sdiResponse;
 
   //Switch power to HYDR21 via latching relay
