@@ -403,7 +403,7 @@ int sample_analite_195()
   {
     //Read analog value from probe
     avg_turb = avg_turb+analogRead(TurbAlog);
-    delay(50)
+    delay(50);
   }
 
   float x = float(avg_turb)/10.0;
