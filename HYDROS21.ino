@@ -20,9 +20,9 @@
 #include <SDI12.h> //Needed for SDI-12 communication
 
 /*Define global constants*/
-const byte LED = 13; // Built in LED pin
+const byte led = 13; // Built in led pin
 const byte chipSelect = 4; // Chip select pin for SD card
-const byte IridPwrPin = 6; // Power base PN2222 transistor pin to Iridium modem
+const byte irid_pwr_pin = 6; // Power base PN2222 transistor pin to Iridium modem
 const byte HydSetPin = 5; //Power relay set pin to HYDROS21
 const byte HydUnsetPin = 9; //Power relay unset pin to HYDROS21
 const byte dataPin = 12; // The pin of the SDI-12 data bus
@@ -65,7 +65,7 @@ int send_hourly_data()
   int err;
 
   // Provide power to Iridium Modem
-  digitalWrite(IridPwrPin, HIGH);
+  digitalWrite(irid_pwr_pin, HIGH);
   // Allow warm up
   delay(200);
 
@@ -73,20 +73,15 @@ int send_hourly_data()
   // Start the serial port connected to the satellite modem
   IridiumSerial.begin(19200);
 
-  // Prevent from trying to charge to quickly, low current setup
-  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
-
-  // Begin satellite modem operation, blink LED (1-sec) if there was an issue
-  err = modem.begin();
   if (err != ISBD_SUCCESS)
   {
-    digitalWrite(LED, HIGH);
+    digitalWrite(led, HIGH);
     delay(1000);
-    digitalWrite(LED, LOW);
+    digitalWrite(led, LOW);
     delay(1000);
-    digitalWrite(LED, HIGH);
+    digitalWrite(led, HIGH);
     delay(1000);
-    digitalWrite(LED, LOW);
+    digitalWrite(led, LOW);
     delay(1000);
   }
 
@@ -101,9 +96,11 @@ int send_hourly_data()
   float *h2o_temps;
   int16_t *h2o_ecs;
 
+
   // Read HOURLY.CSV file
   cp.readSDfile("/HOURLY.CSV");
 
+  int num_rows = cp.getRowsCount();
 
   //Populate data arrays from logfile
   datetimes = (char**)cp["datetime"];
@@ -127,9 +124,27 @@ int send_hourly_data()
     buff_idx++;
   }
 
-  //For each hour 0-23
-  for (int day_hour = 0; day_hour < 24; day_hour++)
+  //Get start and end date information from HOURLY.CSV time series data
+  int start_year = String(datetimes[0]).substring(0, 4).toInt();
+  int start_month = String(datetimes[0]).substring(5, 7).toInt();
+  int start_day = String(datetimes[0]).substring(8, 10).toInt();
+  int start_hour = String(datetimes[0]).substring(11, 13).toInt();
+  int end_year = String(datetimes[num_rows - 1]).substring(0, 4).toInt();
+  int end_month = String(datetimes[num_rows - 1]).substring(5, 7).toInt();
+  int end_day = String(datetimes[num_rows - 1]).substring(8, 10).toInt();
+  int end_hour = String(datetimes[num_rows - 1]).substring(11, 13).toInt();
+
+  //Set the start time to rounded first datetime hour in CSV
+  DateTime start_dt = DateTime(start_year, start_month, start_day, start_hour, 0, 0);
+  //Set the end time to end of last datetime hour in CSV
+  DateTime end_dt = DateTime(end_year, end_month, end_day, end_hour + 1, 0, 0);
+  //For keeping track of the datetime at the end of each hourly interval
+  DateTime intvl_dt;
+
+  while (start_dt < end_dt)
   {
+
+    intvl_dt = start_dt + TimeSpan(0, 1, 0, 0);
 
     //Declare average vars for each HYDROS21 output
     float mean_depth = -9999.0;
@@ -139,14 +154,21 @@ int send_hourly_data()
     int N = 0;
 
     //For each observation in the HOURLY.CSV
-    for (int i = 0; i < cp.getRowsCount(); i++) {
+    for (int i = 0; i < num_rows; i++) {
 
       //Read the datetime and hour
       String datetime = String(datetimes[i]);
+      int dt_year = datetime.substring(0, 4).toInt();
+      int dt_month = datetime.substring(5, 7).toInt();
+      int dt_day = datetime.substring(8, 10).toInt();
       int dt_hour = datetime.substring(11, 13).toInt();
+      int dt_min = datetime.substring(14, 16).toInt();
+      int dt_sec = datetime.substring(17, 19).toInt();
 
-      //If the hour matches day hour
-      if (dt_hour == day_hour)
+      DateTime obs_dt = DateTime(dt_year, dt_month, dt_day, dt_hour, dt_min, dt_sec);
+
+      //Check in the current observatioin falls withing time window
+      if (obs_dt >= start_dt && obs_dt <= intvl_dt)
       {
 
         //Get data
@@ -178,16 +200,14 @@ int send_hourly_data()
     if (N > 0)
     {
       //Compute averages
-      mean_depth = mean_depth / N;
-      mean_temp = (mean_temp / N) * 10.0;
-      mean_ec = mean_ec / N;
+      mean_depth = (mean_depth / (float) N);
+      mean_temp = (mean_temp / (float) N) * 10.0;
+      mean_ec = (mean_ec / (float) N);
 
 
       //Assemble the data string
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
+      String datastring = String(round(mean_depth)) + "," + String(round(mean_temp)) + ","+ String(round(mean_ec)) + ':';
 
-      //Reccomond dropping one var if Iridium freqency is more the 12 hrs
-      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ':';
 
       //Populate the buffer with the datastring
       for (int i = 0; i < datastring.length(); i++)
@@ -195,28 +215,44 @@ int send_hourly_data()
         dt_buffer[buff_idx] = datastring.charAt(i);
         buff_idx++;
       }
+
     }
+
+    start_dt = intvl_dt;
+
   }
 
-  //Indicate the modem is trying to send with LED
-  digitalWrite(LED, HIGH);
+  // Prevent from trying to charge to quickly, low current setup
+  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
+
+  // Begin satellite modem operation, blink led (1-sec) if there was an issue
+  err = modem.begin();
+
+  if (err == ISBD_IS_ASLEEP)
+  {
+    modem.begin();
+  }
+
+  //Indicate the modem is trying to send with led
+  digitalWrite(led, HIGH);
 
   //transmit binary buffer data via iridium
   err = modem.sendSBDBinary(dt_buffer, buff_idx);
 
   //If transmission failed and message is not too large try once more, increase time out
-  if (err != ISBD_SUCCESS)
+  if (err != ISBD_SUCCESS && err != 13)
   {
     err = modem.begin();
     modem.adjustSendReceiveTimeout(500);
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
 
   }
-  digitalWrite(LED, LOW);
+
+  digitalWrite(led, LOW);
 
 
   //Kill power to Iridium Modem by writing the base pin low on PN2222 transistor
-  digitalWrite(IridPwrPin, LOW);
+  digitalWrite(irid_pwr_pin, LOW);
   delay(30);
 
 
@@ -314,23 +350,23 @@ String sample_hydros21()
 void setup(void)
 {
   // Set pin modes
-  pinMode(LED, OUTPUT);
-  digitalWrite(LED, LOW);
+  pinMode(led, OUTPUT);
+  digitalWrite(led, LOW);
   pinMode(HydSetPin, OUTPUT);
   digitalWrite(HydSetPin, LOW);
   pinMode(HydUnsetPin, OUTPUT);
   digitalWrite(HydUnsetPin, HIGH);
   delay(30);
   digitalWrite(HydUnsetPin, LOW);
-  pinMode(IridPwrPin, OUTPUT);
-  digitalWrite(IridPwrPin, LOW);
+  pinMode(irid_pwr_pin, OUTPUT);
+  digitalWrite(irid_pwr_pin, LOW);
 
 
-  //Make sure a SD is available (2-sec flash LED means SD card did not initialize)
+  //Make sure a SD is available (2-sec flash led means SD card did not initialize)
   while (!SD.begin(chipSelect)) {
-    digitalWrite(LED, HIGH);
+    digitalWrite(led, HIGH);
     delay(2000);
-    digitalWrite(LED, LOW);
+    digitalWrite(led, LOW);
     delay(2000);
   }
 
@@ -341,9 +377,9 @@ void setup(void)
   //Read the parameter file 'PARAM.txt', blink (1-sec) if fail to read
   while (!cp.readSDfile("/PARAM.txt"))
   {
-    digitalWrite(LED, HIGH);
+    digitalWrite(led, HIGH);
     delay(1000);
-    digitalWrite(LED, LOW);
+    digitalWrite(led, LOW);
     delay(1000);
   }
 
@@ -371,9 +407,9 @@ void setup(void)
   // Make sure RTC is available
   while (!rtc.begin())
   {
-    digitalWrite(LED, HIGH);
+    digitalWrite(led, HIGH);
     delay(500);
-    digitalWrite(LED, LOW);
+    digitalWrite(led, LOW);
     delay(500);
   }
 
@@ -463,10 +499,10 @@ void loop(void)
     }
   }
 
-  //Flash LED to idicate a sample was just taken
-  digitalWrite(LED, HIGH);
+  //Flash led to idicate a sample was just taken
+  digitalWrite(led, HIGH);
   delay(250);
-  digitalWrite(LED, LOW);
+  digitalWrite(led, LOW);
   delay(250);
 
   //Put logger in low power mode for lenght 'sleep_time'
