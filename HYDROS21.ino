@@ -2,10 +2,11 @@
 #include "RTClib.h" //Needed for communication with Real Time Clock
 #include <SPI.h>//Needed for working with SD card
 #include <SD.h>//Needed for working with SD card
-#include "ArduinoLowPower.h"//Needed for putting Feather M0 to sleep between samples
+#include <ArduinoLowPower.h>//Needed for putting Feather M0 to sleep between samples
 #include <IridiumSBD.h>//Needed for communication with IRIDIUM modem 
 #include <CSV_Parser.h>//Needed for parsing CSV data
 #include <SDI12.h>//Needed for SDI-12 communication
+#include <QuickStats.h>//Needed for computing medians
 
 /*Define global constants*/
 const byte LED = 13; // Built in LED pin
@@ -50,85 +51,22 @@ RTC_PCF8523 rtc; // Setup a PCF8523 Real Time Clock instance
 File dataFile; // Setup a log file instance
 IridiumSBD modem(IridiumSerial); // Declare the IridiumSBD object
 SDI12 mySDI12(dataPin);// Define the SDI-12 bus
+QuickStats stats;//Instance of QuickStats
 
-
-
-
-/*Function pings RTC for datetime and returns formated datestamp YYYY-MM-DD HH:MM:SS*/
-String gen_date_str(DateTime now) {
-
-  //Format current date time values for writing to SD
-  String yr_str = String(now.year());
-  String mnth_str;
-  if (now.month() >= 10)
-  {
-    mnth_str = String(now.month());
-  } else {
-    mnth_str = "0" + String(now.month());
-  }
-
-  String day_str;
-  if (now.day() >= 10)
-  {
-    day_str = String(now.day());
-  } else {
-    day_str = "0" + String(now.day());
-  }
-
-  String hr_str;
-  if (now.hour() >= 10)
-  {
-    hr_str = String(now.hour());
-  } else {
-    hr_str = "0" + String(now.hour());
-  }
-
-  String min_str;
-  if (now.minute() >= 10)
-  {
-    min_str = String(now.minute());
-  } else {
-    min_str = "0" + String(now.minute());
-  }
-
-
-  String sec_str;
-  if (now.second() >= 10)
-  {
-    sec_str = String(now.second());
-  } else {
-    sec_str = "0" + String(now.second());
-  }
-
-  //Assemble a consistently formatted date string for logging to SD or sending or IRIDIUM modem
-  String datestring = yr_str + "-" + mnth_str + "-" + day_str + " " + hr_str + ":" + min_str + ":" + sec_str + ",";
-
-  return datestring;
-}
-
-/*Function reads data from a .csv logfile, and uses Iridium modem to send all observations
+/*Function reads data from HOURLY.CSV logfile and uses Iridium modem to send all observations
    since the previous transmission over satellite at midnight on the RTC.
 */
 int send_hourly_data()
 {
 
-  //For capturing Iridium errors
-  int err;
+  int err;// For capturing Iridium errors
 
-  //Provide power to Iridium Modem
-  digitalWrite(IridPwrPin, HIGH);
-  delay(200);
+  digitalWrite(IridPwrPin, HIGH); // Provide power to Iridium Modem
+  delay(200);  // Allow warm up
 
+  IridiumSerial.begin(19200); // Start the serial port connected to the satellite modem
 
-  // Start the serial port connected to the satellite modem
-  IridiumSerial.begin(19200);
-
-  //Prevent from trying to charge to quickly, low current setup
-  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);
-
-  // Begin satellite modem operation
-  err = modem.begin();
-  if (err != ISBD_SUCCESS)
+  if (err != ISBD_SUCCESS) // Indicate to user if there was a connection issue with modem 
   {
     digitalWrite(LED, HIGH);
     delay(1000);
@@ -140,169 +78,182 @@ int send_hourly_data()
     delay(1000);
   }
 
+  CSV_Parser cp("sdfdf", true, ',');  // Set paramters for parsing the log file (datetime,h2o_depths,h2o_temps,h2o_ecs)
 
+  char **datetimes;  // Datetimes pointer
+  int16_t *h2o_depths; // h2o_depths (stage) pointer 
+  float *h2o_temps; // h2o_temps (water temp) pointer 
+  int16_t *h2o_ecs; // h2o_ecs (electrical conductivity) pointer 
+  float *h2o_turbs; // h2o_turbs (turbidity) pointer
 
-  //Set paramters for parsing the log file
-  CSV_Parser cp("sdfdd", true, ',');
+  cp.readSDfile("/HOURLY.CSV"); // Read HOURLY.CSV file
 
-  //Varibles for holding data fields
-  char **datetimes;
-  int16_t *h2o_depths;
-  float *h2o_temps;
-  int16_t *h2o_ecs;
-  int16_t *turb_ntus;
+  int num_rows = cp.getRowsCount(); // Get the number of rows in HOURLY.CSV
 
-  //Read IRID.CSV
-  cp.readSDfile("/HOURLY.CSV");
-
-
-  //Populate data arrays from logfile
+  /*Populate data arrays from logfile*/
   datetimes = (char**)cp["datetime"];
   h2o_depths = (int16_t*)cp["h2o_depth_mm"];
   h2o_temps = (float*)cp["h2o_temp_deg_c"];
   h2o_ecs = (int16_t*)cp["ec_dS_m"];
-  turb_ntus = (int16_t*)cp["turb_ntu"];
+  h2o_turbs = (float*)cp["turb_ntu"];
 
-  //Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
-  uint8_t dt_buffer[340];
-  int buff_idx = 0;
+  uint8_t dt_buffer[340];//Binary bufffer for iridium transmission (max allowed buffer size 340 bytes)
 
-  //Specific format expected by CGI endpoint, followed by string identifying sensor type, see PostgreSQL table
-  //Get the start datetime stamp as string
-  String datestamp = "ABCD:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13);
+  int buff_idx = 0;//Buffer index counter var
 
-  //Populate buffer with datestamp
+  /*Formatted for CGI script >> sensor_letter_code:date_of_first_obs:hour_of_first_obs:data*/
+  String datestamp = "ABCD:" + String(datetimes[0]).substring(0, 10) + ":" + String(datetimes[0]).substring(11, 13) + ":";
+
+  /*Populate buffer with datestamp bytes*/
   for (int i = 0; i < datestamp.length(); i++)
   {
     dt_buffer[buff_idx] = datestamp.charAt(i);
     buff_idx++;
   }
 
-  dt_buffer[buff_idx] = ':';
-  buff_idx++;
+  int start_year = String(datetimes[0]).substring(0, 4).toInt();//Get start year of first observation 
+  int start_month = String(datetimes[0]).substring(5, 7).toInt();//Get start month of first observation 
+  int start_day = String(datetimes[0]).substring(8, 10).toInt();//Get start day of first observation 
+  int start_hour = String(datetimes[0]).substring(11, 13).toInt();//Get start hour of first observation 
+  int end_year = String(datetimes[num_rows - 1]).substring(0, 4).toInt();//Get end year of first observation 
+  int end_month = String(datetimes[num_rows - 1]).substring(5, 7).toInt();//Get end month of first observation 
+  int end_day = String(datetimes[num_rows - 1]).substring(8, 10).toInt();//Get end day of first observation 
+  int end_hour = String(datetimes[num_rows - 1]).substring(11, 13).toInt();//Get end hour of first observation 
 
-  //For each hour 0-23
-  for (int day_hour = 0; day_hour < 24; day_hour++)
+  DateTime start_dt = DateTime(start_year, start_month, start_day, start_hour, 0, 0); //Set the start time to rounded first datetime hour in CSV
+  DateTime end_dt = DateTime(end_year, end_month, end_day, end_hour + 1, 0, 0); //Set the end time to end of last datetime hour in CSV
+  DateTime intvl_dt; //For keeping track of the datetime at the end of each hourly interval
+
+  while (start_dt < end_dt) //While the start datetime is less than the end datetime
   {
 
-    //Declare average vars for each HYDROS21 output
-    float mean_depth;
-    float mean_temp;
-    float mean_ec;
-    float mean_ntu;
-    boolean is_obs = false;
-    int N = 0;
+    intvl_dt = start_dt + TimeSpan(0, 1, 0, 0);//Set interval datetime to the end of the current hour (start_dt)
 
-    //For each observation in the HOURLY.CSV
-    for (int i = 0; i < cp.getRowsCount(); i++) {
+    /*Declare average vars for each HYDROS21 output as missing*/
+    float mean_depth = -9999.0;
+    float mean_temp = -9999.0;
+    float mean_ec = -9999.0;
+    float mean_turb = -9999.0;
+    
+    boolean is_first_obs = false;//Boolean for keeping track of if it is the first obs
+    int N = 0;//Sample size counter 
 
-      //Read the datetime and hour
+    for (int i = 0; i < num_rows; i++) {//For each observation in the HOURLY.CSV
+
+      /*Read the datetime and parse*/
       String datetime = String(datetimes[i]);
+      int dt_year = datetime.substring(0, 4).toInt();
+      int dt_month = datetime.substring(5, 7).toInt();
+      int dt_day = datetime.substring(8, 10).toInt();
       int dt_hour = datetime.substring(11, 13).toInt();
+      int dt_min = datetime.substring(14, 16).toInt();
+      int dt_sec = datetime.substring(17, 19).toInt();
+      
+      DateTime obs_dt = DateTime(dt_year, dt_month, dt_day, dt_hour, dt_min, dt_sec);//Create DateTime object from parsed datetime 
 
-      //If the hour matches day hour
-      if (dt_hour == day_hour)
+      if (obs_dt >= start_dt && obs_dt <= intvl_dt)//Check in the current observatioin falls withing interval window
       {
 
-        //Get data
+        /*Get data at row i*/
         float h2o_depth = (float) h2o_depths[i];
         float h2o_temp = h2o_temps[i];
         float h2o_ec = (float) h2o_ecs[i];
-        float turb_ntu = (float) turb_ntus[i];
+        float h2o_turb = (float) h2o_turbs[i];
 
-        //Check if this is the first observation for the hour
-        if (is_obs == false)
+        if (is_first_obs == false)//Check if this is the first observation for the hour
         {
-          //Update average vars
+          /*Update average vars to equal first obs value*/
           mean_depth = h2o_depth;
           mean_temp = h2o_temp;
           mean_ec = h2o_ec;
-          mean_ntu = turb_ntu;
-          is_obs = true;
-          N++;
+          mean_turb = h2o_turb;
+          
+          is_first_obs = true;//No longer first observation 
+          N++;//Increment sample counter 
+          
         } else {
-          //Update average vars
+          /*Update average vars cumlative value*/
           mean_depth = mean_depth + h2o_depth;
           mean_temp = mean_temp + h2o_temp;
           mean_ec = mean_ec + h2o_ec;
-          mean_ntu = mean_ntu + turb_ntu;
-          N++;
+          mean_turb = mean_turb + h2o_turb;
+          
+          N++;//Increment sample counter 
         }
-
       }
     }
 
-    //Check if there were any observations for the hour
-    if (N > 0)
+    if (N > 0)//Check if there were any observations for the interval hour
     {
-      //Compute averages
-      mean_depth = mean_depth / N;
-      mean_temp = (mean_temp / N) * 10.0;
-      mean_ec = mean_ec / N;
-      mean_ntu = mean_ntu / N;
+      /*Compute averages*/
+      mean_depth = (mean_depth / (float) N);
+      mean_temp = (mean_temp / (float) N) * 10.0;
+      mean_ec = (mean_ec / (float) N);
+      mean_turb = (mean_turb / (float) N);
 
-
-      //Assemble the data string, no EC for now
-      //String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ':';
-      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ',' + String(round(mean_ntu)) + ':';
-
-      //Populate the buffer with the datastring
+      String datastring = String(round(mean_depth)) + ',' + String(round(mean_temp)) + ',' + String(round(mean_ec)) + ',' + String(round(mean_turb)) + ':'; //Assemble the data string
+      
+      /*Populate the buffer with the datastring*/
       for (int i = 0; i < datastring.length(); i++)
       {
         dt_buffer[buff_idx] = datastring.charAt(i);
         buff_idx++;
       }
+
     }
+
+    start_dt = intvl_dt; //Update start datetime to equal interval date time, i.e., + one hour 
+
   }
+  
+  modem.setPowerProfile(IridiumSBD::USB_POWER_PROFILE);// Prevent from trying to charge to quickly, low current setup
 
-  //Indicate the modem is trying to send
-  digitalWrite(LED, HIGH);
-  //transmit binary buffer data via iridium
-  err = modem.sendSBDBinary(dt_buffer, buff_idx);
+  err = modem.begin();//Begin satellite modem operation
 
-  if(err!=0 && err!=13)
+  if (err == ISBD_IS_ASLEEP)//Call begin once more if modem is asleep for some reason (as found in previous launches)
+  {
+    modem.begin();
+  }
+  
+  digitalWrite(LED, HIGH); //Indicate the modem is trying to send with LED
+
+  err = modem.sendSBDBinary(dt_buffer, buff_idx);//Transmit binary buffer data via iridium
+
+  if (err != ISBD_SUCCESS && err != 13)//If transmission faiLED and message is not too large try once more, increase time out
   {
     err = modem.begin();
     modem.adjustSendReceiveTimeout(500);
     err = modem.sendSBDBinary(dt_buffer, buff_idx);
+
   }
 
-  
-  digitalWrite(LED, LOW);
+  digitalWrite(LED, LOW);//Indicate no longer transmitting 
 
-
-  //Kill power to Iridium Modem
-  digitalWrite(IridPwrPin, LOW);
+  digitalWrite(IridPwrPin, LOW);//Kill power to Iridium Modem by writing the base pin low on PN2222 transistor
   delay(30);
 
+  SD.remove("/HOURLY.CSV");//Remove HOURLY.CSV so that only new data will be sent next transmission 
 
-  //Remove previous daily values CSV
-  if(err == 0 || err == 13)
-  {
-    SD.remove("/HOURLY.CSV");
-  }
-
-  return err;
-
+  return err;//Return err code, not used but can be helpful for trouble shooting 
 
 }
 
+/*Function uses SDI-12 protocol to ping the HYDROS21 sensor for a sample, returns datestamp with the values 
+ * measured by the probe appended, comma seperated 
+ */
 String sample_hydros21()
 {
-  //Switch power to HYDR21 via latching relay
+  /*Switch power to HYDR21 via latching relay*/
   digitalWrite(HydSetPin, HIGH);
   delay(30);
   digitalWrite(HydSetPin, LOW);
 
-  //Give HYDROS21 sensor time to power up
-  delay(1000);
+  delay(1000); //Give HYDROS21 sensor time to settle 
 
-  // first command to take a measurement
-  myCommand = String(SENSOR_ADDRESS) + "M!";
+  myCommand = String(SENSOR_ADDRESS) + "M!";// first command to take a measurement
 
   mySDI12.sendCommand(myCommand);
   delay(30);  // wait a while for a response
-
 
   while (mySDI12.available()) {  // build response string
     char c = mySDI12.read();
@@ -312,7 +263,7 @@ String sample_hydros21()
     }
   }
 
-  //Clear buffer
+  /*Clear buffer*/
   if (sdiResponse.length() > 1)
     mySDI12.clearBuffer();
 
@@ -354,10 +305,10 @@ String sample_hydros21()
     mySDI12.clearBuffer();
 
   //Assemble datastring
-  String hydrostring = gen_date_str(present_time);
+  String hydrostring = present_time.timestamp() + ",";
   hydrostring = hydrostring + sdiResponse;
 
-  //Switch power to HYDR21 via latching relay
+  /*Switch power off to HYDROS21 via latching relay*/
   digitalWrite(HydUnsetPin, HIGH);
   delay(30);
   digitalWrite(HydUnsetPin, LOW);
@@ -365,8 +316,7 @@ String sample_hydros21()
   return hydrostring;
 }
 
-
-//This function reads Analite 195 analog turbidity probe and return the scaled NTU value from provided linear calibration
+//This function samples Analite 195 analog turbidity probe 100 times and returns the scaled median NTU value from provided (PARAM.txt) linear calibration
 int sample_analite_195()
 {
   //Power up analite 195
@@ -376,6 +326,8 @@ int sample_analite_195()
 
   //Let probe settle
   delay(1000);
+
+  float values[100];//Array for storing sampled distances
 
   //Probe will atomatically wipe after 30 power cycles, ititiate at 25 will prvent wiper covering sensor during reading, and prevent bio-foul
   if (wiper_cnt >= 5)
@@ -397,29 +349,26 @@ int sample_analite_195()
   }
 
 
-  int avg_turb = analogRead(TurbAlog);
-
-  for(int i = 0; i<9; i++)
+  for(int i = 0; i<100; i++)
   {
     //Read analog value from probe
-    avg_turb = avg_turb+analogRead(TurbAlog);
-    delay(50);
+    values[i]= (float) analogRead(TurbAlog);
+    delay(5);
   }
 
-  float x = float(avg_turb)/10.0;
-
+  float med_turb_alog = stats.median(values, 100);//Compute median 12-bit analog val
 
   //Convert analog value (0-4096) to NTU from provided linear calibration coefficients
-  float y = (m * x) + b;
+  float ntu = (m * med_turb_alog) + b;
 
-  int ntu = round(y);
+  int ntu_int = round(ntu);
 
   //Power down the probe
   digitalWrite(TurbUnsetPin, HIGH);
   delay(30);
   digitalWrite(TurbUnsetPin, LOW);
 
-  return ntu;
+  return ntu_int;
 }
 
 
@@ -541,7 +490,7 @@ void loop(void)
   //Sample the HYDROS21 sensor for a reading
   String datastring = sample_hydros21();
   delay(100);
-  datastring = datastring + "," + String(sample_analite_195());
+  datastring = datastring + ',' + String(sample_analite_195());
 
 
   //Write header if first time writing to the logfile
